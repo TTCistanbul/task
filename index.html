@@ -28,6 +28,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Alpine.js for Interactive Logic -->
     <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Firebase（與打卡系統同一個專案，資料存在雲端，所有瀏覽器同步） -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <style>
         @media print {
             .no-print { display: none !important; }
@@ -39,6 +43,34 @@
     </style>
 </head>
 <body class="h-full text-slate-800 antialiased font-sans" x-data="taskApp()" x-init="initData()">
+
+    <!-- 登入畫面（與打卡系統同一組帳號） -->
+    <div x-show="authState !== 'in'" x-cloak class="no-print fixed inset-0 z-50 bg-slate-100 flex items-center justify-center p-4">
+        <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-6 space-y-4">
+            <div class="text-center">
+                <div class="inline-flex p-3 bg-sky-50 text-sky-600 rounded-xl mb-2"><i class="fa-solid fa-list-check text-xl"></i></div>
+                <h2 class="text-lg font-bold">工作進度與任務交接追蹤表</h2>
+                <p class="text-xs text-slate-500">請用打卡系統的帳號登入 / Sign in with your check-in account</p>
+            </div>
+            <div x-show="authState === 'loading'" class="text-center text-sm text-slate-500 py-4">
+                <i class="fa-solid fa-spinner fa-spin"></i> 載入中 / Loading…
+            </div>
+            <form x-show="authState === 'out'" @submit.prevent="login()" class="space-y-3">
+                <input type="email" x-model="loginEmail" autocomplete="username" required placeholder="Email"
+                       class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                <input type="password" x-model="loginPw" autocomplete="current-password" required placeholder="密碼 / Password"
+                       class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                <p x-show="loginError" x-text="loginError" class="text-xs text-rose-600"></p>
+                <button type="submit" :disabled="loginBusy"
+                        class="w-full bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white text-sm font-medium py-2 rounded-xl transition">
+                    <span x-text="loginBusy ? '登入中… / Signing in…' : '登入 / Sign in'"></span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 雲端同步錯誤提示 -->
+    <div x-show="syncError" x-cloak class="no-print bg-rose-600 text-white text-sm px-4 py-2 text-center" x-text="syncError"></div>
 
     <div class="min-h-full flex flex-col">
         <!-- Top Navigation / Header -->
@@ -70,6 +102,13 @@
                     </button>
                     <button @click="resetToDefault()" class="text-slate-400 hover:text-red-400 text-xs p-2 transition" title="重置預設資料 / Reset Data">
                         <i class="fa-solid fa-rotate-right"></i>
+                    </button>
+                    <span class="hidden md:inline text-[11px] text-slate-400" :title="userEmail">
+                        <i class="fa-solid fa-cloud" :class="syncError ? 'text-rose-400' : 'text-emerald-400'"></i>
+                        <span x-text="userEmail"></span>
+                    </span>
+                    <button @click="logout()" class="text-slate-400 hover:text-white text-xs p-2 transition" title="登出 / Sign out">
+                        <i class="fa-solid fa-right-from-bracket"></i>
                     </button>
                 </div>
             </div>
@@ -536,6 +575,16 @@
                 },
                 tasks: [],
 
+                // 雲端 / 登入狀態
+                authState: 'loading', // 'loading' | 'out' | 'in'
+                userEmail: '',
+                loginEmail: '',
+                loginPw: '',
+                loginError: '',
+                loginBusy: false,
+                syncError: '',
+                _unsub: null,
+
                 // Pre-populated data directly from employee documents
                 defaultTasks: [
                     // Donus Tasks
@@ -711,29 +760,123 @@
                     }
                 ],
 
+                // ===== Firebase：任務存在 Firestore 的 taskTracker 集合，每個任務一筆文件 =====
                 initData() {
-                    const localData = localStorage.getItem('bilingual_tracker_tasks_v2');
-                    if (localData) {
-                        try {
-                            this.tasks = JSON.parse(localData);
-                        } catch (e) {
-                            this.tasks = this.defaultTasks;
+                    const cfg = {
+                        apiKey: "AIzaSyDau5hZr9h9Iqt_JfLWH8VtQVHw-0fb4to",
+                        authDomain: "office-checkin-855a6.firebaseapp.com",
+                        projectId: "office-checkin-855a6",
+                        storageBucket: "office-checkin-855a6.firebasestorage.app",
+                        messagingSenderId: "507140006307",
+                        appId: "1:507140006307:web:bf51eccf49377e1bb4fa16"
+                    };
+                    // 用獨立名稱的 app，登入狀態不會和打卡系統互相干擾
+                    const app = firebase.apps.find(a => a.name === 'taskTracker') || firebase.initializeApp(cfg, 'taskTracker');
+                    this._auth = app.auth();
+                    this._db = app.firestore();
+                    this._col = this._db.collection('taskTracker');
+                    this._auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+
+                    this._auth.onAuthStateChanged(user => {
+                        if (this._unsub) { this._unsub(); this._unsub = null; }
+                        if (!user) {
+                            this.tasks = [];
+                            this.userEmail = '';
+                            this.authState = 'out';
+                            return;
                         }
+                        this.userEmail = user.email || '';
+                        this.authState = 'in';
+                        this.listenTasks();
+                    });
+                },
+
+                listenTasks() {
+                    let first = true;
+                    this._unsub = this._col.onSnapshot(snap => {
+                        this.syncError = '';
+                        if (first && !snap.metadata.fromCache) {
+                            first = false;
+                            if (snap.empty) {
+                                this.seedCloud();   // 雲端還沒資料：第一次上傳
+                                return;
+                            }
+                        }
+                        this.tasks = snap.docs
+                            .map(d => d.data())
+                            .sort((a, b) => Number(a.id) - Number(b.id));
+                    }, err => this.handleError(err));
+                },
+
+                // 第一次使用：優先上傳這個瀏覽器裡原本的紀錄（保留已打勾狀態），沒有才用預設任務
+                async seedCloud() {
+                    let initial = this.defaultTasks;
+                    try {
+                        const local = JSON.parse(localStorage.getItem('bilingual_tracker_tasks_v2') || 'null');
+                        if (Array.isArray(local) && local.length) initial = local;
+                    } catch (e) {}
+                    await this.writeAll(initial);
+                },
+
+                async writeAll(list) {
+                    try {
+                        const batch = this._db.batch();
+                        list.forEach(t => batch.set(this._col.doc(String(t.id)), this.clean(t)));
+                        await batch.commit();
+                    } catch (err) { this.handleError(err); }
+                },
+
+                clean(t) {
+                    return JSON.parse(JSON.stringify(t)); // 去掉 Alpine 的 proxy
+                },
+
+                async saveOne(t) {
+                    try {
+                        await this._col.doc(String(t.id)).set({
+                            ...this.clean(t),
+                            updatedBy: this.userEmail,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    } catch (err) { this.handleError(err); }
+                },
+
+                handleError(err) {
+                    console.error('[firestore]', err);
+                    if (err && err.code === 'permission-denied') {
+                        this.syncError = '沒有讀寫權限：請確認 Firestore 規則已加入 taskTracker，且此帳號在打卡系統有員工資料。';
                     } else {
-                        this.tasks = this.defaultTasks;
-                        this.saveToLocalStorage();
+                        this.syncError = '雲端同步失敗，請檢查網路後重新整理。 / Sync failed — check your connection and reload.';
                     }
                 },
 
-                saveToLocalStorage() {
-                    localStorage.setItem('bilingual_tracker_tasks_v2', JSON.stringify(this.tasks));
+                async login() {
+                    this.loginError = '';
+                    this.loginBusy = true;
+                    try {
+                        await this._auth.signInWithEmailAndPassword(this.loginEmail.trim().toLowerCase(), this.loginPw);
+                        this.loginPw = '';
+                    } catch (err) {
+                        this.loginError = err.code === 'auth/network-request-failed'
+                            ? '網路錯誤，請再試一次 / Network error'
+                            : '帳號或密碼錯誤 / Wrong email or password';
+                    } finally {
+                        this.loginBusy = false;
+                    }
                 },
 
-                resetToDefault() {
-                    if (confirm('確定要將所有任務重置為預設資料嗎？ / Reset to default data?')) {
-                        this.tasks = JSON.parse(JSON.stringify(this.defaultTasks));
-                        this.saveToLocalStorage();
-                    }
+                logout() {
+                    if (confirm('確定要登出嗎？ / Sign out?')) this._auth.signOut();
+                },
+
+                async resetToDefault() {
+                    if (!confirm('確定要將所有任務重置為預設資料嗎？所有人看到的資料都會被重置。 / Reset to default data for everyone?')) return;
+                    try {
+                        const snap = await this._col.get();
+                        const batch = this._db.batch();
+                        snap.docs.forEach(d => batch.delete(d.ref));
+                        this.defaultTasks.forEach(t => batch.set(this._col.doc(String(t.id)), this.clean(t)));
+                        await batch.commit();
+                    } catch (err) { this.handleError(err); }
                 },
 
                 // Counts for Tab badges
@@ -836,12 +979,8 @@
                 },
 
                 toggleStatus(task) {
-                    if (task.status === 'Completed') {
-                        task.status = 'In Progress';
-                    } else {
-                        task.status = 'Completed';
-                    }
-                    this.saveToLocalStorage();
+                    const next = task.status === 'Completed' ? 'In Progress' : 'Completed';
+                    this.saveOne({ ...this.clean(task), status: next });
                 },
 
                 toggleExpand(id) {
@@ -876,23 +1015,14 @@
                 },
 
                 saveTask() {
-                    if (this.form.id) {
-                        const idx = this.tasks.findIndex(t => t.id === this.form.id);
-                        if (idx !== -1) {
-                            this.tasks[idx] = { ...this.form };
-                        }
-                    } else {
-                        this.form.id = Date.now();
-                        this.tasks.push({ ...this.form });
-                    }
-                    this.saveToLocalStorage();
+                    if (!this.form.id) this.form.id = Date.now();
+                    this.saveOne(this.form);
                     this.isModalOpen = false;
                 },
 
                 deleteTask(id) {
                     if (confirm('確定要刪除這項任務嗎？ / Delete this task?')) {
-                        this.tasks = this.tasks.filter(t => t.id !== id);
-                        this.saveToLocalStorage();
+                        this._col.doc(String(id)).delete().catch(err => this.handleError(err));
                     }
                 },
 
