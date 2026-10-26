@@ -116,6 +116,128 @@
 
         <!-- Main Content Area -->
         <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <!-- ===== 頁面切換（只有管理者看得到「一對一面談」） ===== -->
+            <div x-show="isManager" x-cloak class="no-print flex items-center bg-white border border-slate-200 p-1 rounded-xl mb-6 w-fit shadow-xs">
+                <button @click="page = 'tasks'" :class="page === 'tasks' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'"
+                        class="px-4 py-2 text-xs sm:text-sm rounded-lg transition flex items-center gap-2">
+                    <i class="fa-solid fa-list-check"></i> 任務追蹤
+                </button>
+                <button @click="page = 'ooo'" :class="page === 'ooo' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'"
+                        class="px-4 py-2 text-xs sm:text-sm rounded-lg transition flex items-center gap-2">
+                    <i class="fa-solid fa-user-lock"></i> 一對一面談 <span class="text-[10px] opacity-70">（只有你看得到）</span>
+                </button>
+            </div>
+
+            <!-- ===== 一對一面談 ===== -->
+            <div x-show="isManager && page === 'ooo'" x-cloak class="space-y-6">
+
+                <!-- 權限尚未設定：顯示要貼到 Firebase 的規則 -->
+                <div x-show="oooError === 'permission'" class="bg-rose-50 border border-rose-200 rounded-2xl p-5 space-y-3">
+                    <div class="font-bold text-rose-800 flex items-center gap-2"><i class="fa-solid fa-lock"></i> 還沒開啟面談紀錄的權限</div>
+                    <p class="text-sm text-rose-900">請到 Firebase 主控台 → Firestore Database → 規則（Rules），在 <code>match /databases/{database}/documents {</code> 裡面加上下面這段，按「發布」。加好後重新整理這頁。</p>
+                    <pre class="bg-white border border-rose-200 rounded-xl p-3 text-xs overflow-x-auto" x-text="oooRule"></pre>
+                    <button @click="navigator.clipboard && navigator.clipboard.writeText(oooRule)" class="text-xs bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-lg"><i class="fa-regular fa-copy"></i> 複製規則</button>
+                    <p class="text-xs text-rose-800">注意：如果規則裡有一條「所有登入者都能讀寫全部資料」的總開關（例如 <code>match /{document=**}</code> 搭配 <code>request.auth != null</code>），同事一樣讀得到，請把那條拿掉，改成每個集合各自設定。</p>
+                </div>
+
+                <div x-show="oooError === 'network'" class="text-sm text-rose-700">面談紀錄連線失敗，請檢查網路後重新整理。</div>
+                <!-- 兩位同仁摘要 -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <template x-for="p in ['Donus', 'Osman']" :key="p">
+                        <button @click="oooPerson = p" class="text-left bg-white p-5 rounded-2xl border shadow-xs transition"
+                                :class="oooPerson === p ? (p === 'Donus' ? 'border-emerald-400 ring-2 ring-emerald-100' : 'border-indigo-400 ring-2 ring-indigo-100') : 'border-slate-200 hover:border-slate-300'">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+                                         :class="p === 'Donus' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'" x-text="p[0]"></div>
+                                    <span class="font-bold text-slate-800" x-text="p"></span>
+                                </div>
+                                <span class="text-xs px-2 py-0.5 rounded-full font-semibold"
+                                      :class="personSummary(p).overdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'"
+                                      x-text="personSummary(p).next ? '下次面談 ' + personSummary(p).next + (personSummary(p).overdue ? '（已過）' : '') : '未排下次面談'"></span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 mt-4 text-center">
+                                <div class="bg-slate-50 rounded-xl py-2"><div class="text-[10px] text-slate-500">上次面談</div><div class="text-sm font-bold text-slate-700" x-text="personSummary(p).last || '—'"></div></div>
+                                <div class="bg-slate-50 rounded-xl py-2"><div class="text-[10px] text-slate-500">未完成約定</div><div class="text-sm font-bold" :class="personSummary(p).open ? 'text-amber-700' : 'text-slate-700'" x-text="personSummary(p).open"></div></div>
+                                <div class="bg-slate-50 rounded-xl py-2"><div class="text-[10px] text-slate-500">目標</div><div class="text-sm font-bold text-slate-700" x-text="personSummary(p).goals"></div></div>
+                            </div>
+                        </button>
+                    </template>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <h2 class="text-lg font-bold text-slate-800 mr-auto"><span x-text="oooPerson"></span> 的面談與目標</h2>
+                    <button @click="openMeeting(null)" class="bg-sky-600 hover:bg-sky-500 text-white text-sm px-3.5 py-2 rounded-xl font-medium flex items-center gap-1.5"><i class="fa-solid fa-plus"></i> 新增面談紀錄</button>
+                    <button @click="openGoal(null)" class="bg-white border border-slate-300 hover:border-sky-400 text-slate-700 text-sm px-3.5 py-2 rounded-xl font-medium flex items-center gap-1.5"><i class="fa-solid fa-bullseye"></i> 新增目標</button>
+                </div>
+
+                <!-- 目標 -->
+                <section class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+                    <h3 class="text-sm font-bold text-slate-600 flex items-center gap-2"><i class="fa-solid fa-bullseye text-sky-600"></i> 目標</h3>
+                    <p x-show="goalsOf(oooPerson).length === 0" class="text-sm text-slate-400">還沒有目標。可以在面談時和對方一起訂 2–3 個，例如這一季要獨立完成的工作。</p>
+                    <template x-for="g in goalsOf(oooPerson)" :key="g.id">
+                        <div class="border border-slate-200 rounded-xl p-3.5 flex flex-col gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-semibold text-slate-800" x-text="g.title"></span>
+                                <span class="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600" x-show="g.period" x-text="g.period"></span>
+                                <span class="text-[11px] px-2 py-0.5 rounded-md font-bold" :class="g.status === '達成' ? 'bg-emerald-100 text-emerald-800' : g.status === '暫停' ? 'bg-slate-100 text-slate-600' : 'bg-sky-100 text-sky-800'" x-text="g.status || '進行中'"></span>
+                                <div class="ml-auto flex gap-1">
+                                    <button @click="openGoal(g)" class="p-1.5 text-slate-500 hover:text-indigo-600" title="編輯"><i class="fa-solid fa-pen-to-square text-xs"></i></button>
+                                    <button @click="deleteOoo(g)" class="p-1.5 text-slate-400 hover:text-rose-600" title="刪除"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-sky-500 rounded-full" :style="`width:${g.progress || 0}%`"></div></div>
+                                <span class="text-xs font-semibold text-slate-600 w-10 text-right" x-text="(g.progress || 0) + '%'"></span>
+                            </div>
+                            <p x-show="g.notes" class="text-sm text-slate-600 whitespace-pre-line" x-text="g.notes"></p>
+                        </div>
+                    </template>
+                </section>
+
+                <!-- 面談時間軸 -->
+                <section class="space-y-4">
+                    <p x-show="meetingsOf(oooPerson).length === 0" class="text-center text-sm text-slate-400 bg-white border border-slate-200 rounded-2xl py-10">還沒有面談紀錄。按「新增面談紀錄」記下第一次談話。</p>
+                    <template x-for="m in meetingsOf(oooPerson)" :key="m.id">
+                        <article class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                            <div class="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
+                                <span class="font-bold text-slate-800"><i class="fa-regular fa-calendar text-slate-400 mr-1"></i><span x-text="m.date"></span></span>
+                                <span x-show="m.nextDate" class="text-xs text-slate-500">下次：<span x-text="m.nextDate"></span></span>
+                                <div class="ml-auto flex gap-1">
+                                    <button @click="openMeeting(m)" class="p-1.5 text-slate-500 hover:text-indigo-600" title="編輯"><i class="fa-solid fa-pen-to-square text-xs"></i></button>
+                                    <button @click="deleteOoo(m)" class="p-1.5 text-slate-400 hover:text-rose-600" title="刪除"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                                </div>
+                            </div>
+                            <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                <div class="bg-slate-50 p-3 rounded-xl"><div class="text-[11px] font-bold text-slate-600 mb-1">談話重點</div><p class="whitespace-pre-line text-slate-700" x-text="m.topics || '—'"></p></div>
+                                <div class="bg-slate-50 p-3 rounded-xl"><div class="text-[11px] font-bold text-slate-600 mb-1">對方提出的問題／想法</div><p class="whitespace-pre-line text-slate-700" x-text="m.staffInput || '—'"></p></div>
+                                <div class="bg-slate-50 p-3 rounded-xl"><div class="text-[11px] font-bold text-slate-600 mb-1">我給的回饋</div><p class="whitespace-pre-line text-slate-700" x-text="m.feedback || '—'"></p></div>
+                                <div x-show="m.privateNotes" class="md:col-span-3 bg-amber-50 border border-amber-200 p-3 rounded-xl"><div class="text-[11px] font-bold text-amber-900 mb-1"><i class="fa-solid fa-eye-slash"></i> 私下觀察</div><p class="whitespace-pre-line text-slate-700" x-text="m.privateNotes"></p></div>
+                            </div>
+                            <div x-show="(m.agreements || []).length" class="px-5 pb-5">
+                                <div class="text-[11px] font-bold text-emerald-800 mb-2">約定事項</div>
+                                <ul class="space-y-1.5">
+                                    <template x-for="(a, i) in (m.agreements || [])" :key="i">
+                                        <li class="flex items-start gap-2.5 text-sm">
+                                            <button @click="toggleAgreement(m, i)" :disabled="!!linkedTask(a)"
+                                                    class="mt-0.5 w-5 h-5 flex-shrink-0 rounded-md border-2 flex items-center justify-center"
+                                                    :class="agreementDone(a) ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent'"
+                                                    :title="linkedTask(a) ? '已轉成任務，跟著任務狀態' : '標示完成'"><i class="fa-solid fa-check text-[10px]"></i></button>
+                                            <span class="flex-1" :class="agreementDone(a) ? 'line-through text-slate-400' : 'text-slate-700'" x-text="a.text"></span>
+                                            <template x-if="linkedTask(a)">
+                                                <span class="text-[11px] px-2 py-0.5 rounded-md font-bold whitespace-nowrap" :class="getStatusBadgeClass(linkedTask(a).status)" x-text="'任務：' + getStatusLabel(linkedTask(a).status).split(' / ')[0]"></span>
+                                            </template>
+                                            <button x-show="!a.taskId" @click="agreementToTask(m, i)" class="text-[11px] text-sky-700 hover:bg-sky-50 px-2 py-0.5 rounded-md whitespace-nowrap" title="建立成任務追蹤表的任務（同仁看得到這一行文字）"><i class="fa-solid fa-arrow-right"></i> 轉成任務</button>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+                        </article>
+                    </template>
+                </section>
+            </div>
+
+            <div x-show="page === 'tasks'">
 
             <!-- Summary Dashboard Cards -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-5 mb-6 no-print">
@@ -559,6 +681,7 @@
                     <button @click="viewMode = 'All'; selectedMember = 'All'; selectedStatus = 'All'; searchQuery = ''" class="mt-2 text-sky-600 text-xs font-semibold hover:underline">清除所有篩選條件 / Clear All Filters</button>
                 </div>
             </div>
+            </div><!-- /page tasks -->
         </main>
 
         <!-- Edit / Create Task Modal -->
@@ -660,6 +783,84 @@
                         <div class="flex justify-end space-x-3 pt-3 border-t">
                             <button type="button" @click="isModalOpen = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition">取消 / Cancel</button>
                             <button type="submit" class="px-5 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl shadow-xs transition">儲存任務 / Save Task</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 面談紀錄 Modal ===== -->
+        <div x-show="meetingModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" role="dialog" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div @click="meetingModal = false" class="fixed inset-0 bg-slate-900/60"></div>
+                <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-xl w-full max-w-2xl">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+                        <h3 class="text-base font-bold" x-text="mForm.id ? '編輯面談紀錄' : '新增面談紀錄'"></h3>
+                        <button @click="meetingModal = false" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <form @submit.prevent="saveMeeting()" class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">對象 *</label>
+                                <select x-model="mForm.person" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"><option>Donus</option><option>Osman</option></select></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">面談日期 *</label>
+                                <input type="date" x-model="mForm.date" required class="w-full text-sm p-2 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">下次面談</label>
+                                <input type="date" x-model="mForm.nextDate" class="w-full text-sm p-2 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        </div>
+                        <div x-show="lastMeeting(mForm.person, mForm.id)" class="bg-sky-50 border border-sky-100 rounded-xl p-3 text-xs text-slate-700">
+                            <div class="font-bold text-sky-800 mb-1">上次（<span x-text="lastMeeting(mForm.person, mForm.id)?.date"></span>）的約定，這次可以先追：</div>
+                            <template x-for="a in (lastMeeting(mForm.person, mForm.id)?.agreements || [])"><div x-text="(agreementDone(a) ? '✓ ' : '□ ') + a.text"></div></template>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-700 mb-1">談話重點</label>
+                            <textarea x-model="mForm.topics" rows="3" placeholder="這次談了哪些工作、進度、困難" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">對方提出的問題／想法</label>
+                                <textarea x-model="mForm.staffInput" rows="3" placeholder="對方的需求、抱怨、建議" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">我給的回饋</label>
+                                <textarea x-model="mForm.feedback" rows="3" placeholder="肯定的地方、需要改進的地方" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-emerald-800 mb-1">約定事項（一行一件）</label>
+                            <textarea x-model="mForm.agreementsText" rows="3" placeholder="例如：11/5 前把 KIRPART 報帳資料補齊&#10;每週五下午寄進度簡報給我" class="w-full text-sm p-2.5 bg-emerald-50/40 border border-emerald-200 rounded-xl"></textarea></div>
+                        <div><label class="block text-xs font-bold text-amber-900 mb-1"><i class="fa-solid fa-eye-slash"></i> 私下觀察（給自己看的）</label>
+                            <textarea x-model="mForm.privateNotes" rows="2" placeholder="態度、狀態、要留意的事" class="w-full text-sm p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl"></textarea></div>
+                        <div class="flex justify-end gap-3 pt-3 border-t">
+                            <button type="button" @click="meetingModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl">取消</button>
+                            <button type="submit" class="px-5 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl">儲存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 目標 Modal ===== -->
+        <div x-show="goalModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" role="dialog" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div @click="goalModal = false" class="fixed inset-0 bg-slate-900/60"></div>
+                <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-xl w-full max-w-lg">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+                        <h3 class="text-base font-bold" x-text="gForm.id ? '編輯目標' : '新增目標'"></h3>
+                        <button @click="goalModal = false" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <form @submit.prevent="saveGoal()" class="p-6 space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">對象 *</label>
+                                <select x-model="gForm.person" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"><option>Donus</option><option>Osman</option></select></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">期間</label>
+                                <input type="text" x-model="gForm.period" placeholder="例如 2026 Q4" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-700 mb-1">目標 *</label>
+                            <input type="text" x-model="gForm.title" required placeholder="例如：買主報帳案件能獨立完成，不需要我逐筆檢查" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        <div class="grid grid-cols-2 gap-4 items-end">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">進度 <span x-text="(gForm.progress || 0) + '%'"></span></label>
+                                <input type="range" min="0" max="100" step="10" x-model.number="gForm.progress" class="w-full"></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">狀態</label>
+                                <select x-model="gForm.status" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"><option>進行中</option><option>達成</option><option>暫停</option></select></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-700 mb-1">備註</label>
+                            <textarea x-model="gForm.notes" rows="2" placeholder="怎麼衡量、目前卡在哪" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                        <div class="flex justify-end gap-3 pt-3 border-t">
+                            <button type="button" @click="goalModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl">取消</button>
+                            <button type="submit" class="px-5 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl">儲存</button>
                         </div>
                     </form>
                 </div>
@@ -887,6 +1088,150 @@
                     }
                 ],
 
+                // ===== 一對一面談（只有管理者帳號看得到；資料在 oneOnOne 集合，靠 Firestore 規則鎖住） =====
+                MANAGER_EMAIL: 'evatzeng@taitra.org.tw',
+                page: 'tasks',
+                oneOnOnes: [],
+                oooError: '',
+                oooPerson: 'Donus',
+                meetingModal: false,
+                goalModal: false,
+                mForm: {},
+                gForm: {},
+                _unsubOoo: null,
+
+                get isManager() {
+                    return (this.userEmail || '').toLowerCase() === this.MANAGER_EMAIL;
+                },
+
+                get oooRule() {
+                    return "    match /oneOnOne/{docId} {\n      allow read, write: if request.auth != null\n        && request.auth.token.email == '" + this.MANAGER_EMAIL + "';\n    }";
+                },
+
+                listenOneOnOne() {
+                    if (this._unsubOoo) { this._unsubOoo(); this._unsubOoo = null; }
+                    if (!this.isManager) { this.oneOnOnes = []; return; }
+                    this._oooCol = this._db.collection('oneOnOne');
+                    this._unsubOoo = this._oooCol.onSnapshot(snap => {
+                        this.oooError = '';
+                        this.oneOnOnes = snap.docs.map(d => d.data());
+                    }, err => {
+                        console.error('[oneOnOne]', err);
+                        this.oooError = err && err.code === 'permission-denied' ? 'permission' : 'network';
+                    });
+                },
+
+                today() {
+                    const d = new Date();
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                },
+
+                meetingsOf(p) {
+                    return this.oneOnOnes.filter(x => x.kind === 'meeting' && x.person === p)
+                        .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id);
+                },
+
+                goalsOf(p) {
+                    return this.oneOnOnes.filter(x => x.kind === 'goal' && x.person === p)
+                        .sort((a, b) => (a.status === '達成') - (b.status === '達成') || a.id - b.id);
+                },
+
+                lastMeeting(p, exceptId) {
+                    return this.meetingsOf(p).find(m => m.id !== exceptId) || null;
+                },
+
+                linkedTask(a) {
+                    return a && a.taskId ? this.tasks.find(t => String(t.id) === String(a.taskId)) || null : null;
+                },
+
+                agreementDone(a) {
+                    const t = this.linkedTask(a);
+                    return t ? t.status === 'Completed' : !!a.done;
+                },
+
+                personSummary(p) {
+                    const ms = this.meetingsOf(p);
+                    const last = ms[0];
+                    const next = ms.map(m => m.nextDate).filter(Boolean).sort().pop() || '';
+                    const open = ms.reduce((n, m) => n + (m.agreements || []).filter(a => !this.agreementDone(a)).length, 0);
+                    return {
+                        last: last ? last.date : '',
+                        next,
+                        overdue: !!next && next < this.today() && !(last && last.date >= next),
+                        open,
+                        goals: this.goalsOf(p).filter(g => g.status !== '達成').length
+                    };
+                },
+
+                async saveOoo(doc) {
+                    try {
+                        await this._oooCol.doc(String(doc.id)).set({ ...this.clean(doc), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    } catch (err) {
+                        this.oooError = err && err.code === 'permission-denied' ? 'permission' : 'network';
+                        alert('儲存失敗：' + (this.oooError === 'permission' ? '還沒開啟面談紀錄的權限（請看頁面上方的說明）' : '請檢查網路後再試'));
+                    }
+                },
+
+                deleteOoo(doc) {
+                    if (!confirm(doc.kind === 'goal' ? '確定刪除這個目標？' : '確定刪除這次面談紀錄？')) return;
+                    this._oooCol.doc(String(doc.id)).delete().catch(() => alert('刪除失敗'));
+                },
+
+                openMeeting(m) {
+                    this.mForm = m
+                        ? { ...this.clean(m), agreementsText: (m.agreements || []).map(a => a.text).join('\n') }
+                        : { id: null, kind: 'meeting', person: this.oooPerson, date: this.today(), nextDate: '', topics: '', staffInput: '', feedback: '', privateNotes: '', agreements: [], agreementsText: '' };
+                    this.meetingModal = true;
+                },
+
+                saveMeeting() {
+                    const f = this.clean(this.mForm);
+                    const old = f.agreements || [];
+                    // 依文字對回原本的約定，保留完成狀態與已轉成的任務
+                    f.agreements = (f.agreementsText || '').split('\n').map(s => s.trim()).filter(Boolean)
+                        .map(text => old.find(a => a.text === text) || { text, done: false, taskId: null });
+                    delete f.agreementsText;
+                    if (!f.id) f.id = Date.now();
+                    f.kind = 'meeting';
+                    this.oooPerson = f.person;
+                    this.saveOoo(f);
+                    this.meetingModal = false;
+                },
+
+                toggleAgreement(m, i) {
+                    const doc = this.clean(m);
+                    doc.agreements[i].done = !doc.agreements[i].done;
+                    this.saveOoo(doc);
+                },
+
+                async agreementToTask(m, i) {
+                    const a = m.agreements[i];
+                    if (!confirm('把這件事建立成任務？\n\n「' + a.text + '」\n\n任務追蹤表的同仁看得到這一行文字（面談的其他內容不會出現）。')) return;
+                    const task = {
+                        id: Date.now(), assignee: m.person, title: a.text, company: '', contact: '', phone: '',
+                        status: 'Not Started', checkpoint: '', deadline: '', currentStatus: '', proposedSolution: '',
+                        managerNotes: '來自 ' + m.date + ' 一對一面談的約定事項'
+                    };
+                    await this.saveOne(task);
+                    const doc = this.clean(m);
+                    doc.agreements[i].taskId = task.id;
+                    await this.saveOoo(doc);
+                },
+
+                openGoal(g) {
+                    this.gForm = g ? this.clean(g) : { id: null, kind: 'goal', person: this.oooPerson, title: '', period: '', progress: 0, status: '進行中', notes: '' };
+                    this.goalModal = true;
+                },
+
+                saveGoal() {
+                    const f = this.clean(this.gForm);
+                    if (!f.id) f.id = Date.now();
+                    f.kind = 'goal';
+                    this.oooPerson = f.person;
+                    this.saveOoo(f);
+                    this.goalModal = false;
+                },
+
                 // ===== Firebase：任務存在 Firestore 的 taskTracker 集合，每個任務一筆文件 =====
                 initData() {
                     const cfg = {
@@ -906,8 +1251,11 @@
 
                     this._auth.onAuthStateChanged(user => {
                         if (this._unsub) { this._unsub(); this._unsub = null; }
+                        if (this._unsubOoo) { this._unsubOoo(); this._unsubOoo = null; }
                         if (!user) {
                             this.tasks = [];
+                            this.oneOnOnes = [];
+                            this.page = 'tasks';
                             this.userEmail = '';
                             this.authState = 'out';
                             return;
@@ -915,6 +1263,7 @@
                         this.userEmail = user.email || '';
                         this.authState = 'in';
                         this.listenTasks();
+                        this.listenOneOnOne();
                     });
                 },
 
