@@ -214,6 +214,10 @@
                         <i class="fa-solid fa-plus"></i>
                         <span>新增任務 <span class="text-[10px] opacity-80">/ Add</span></span>
                     </button>
+                    <button @click="openNewGroup()" class="bg-sky-800 hover:bg-sky-700 text-white border border-sky-600 text-xs sm:text-sm px-3.5 py-2 rounded-xl font-medium shadow-xs transition flex items-center gap-1.5" title="一次建立同一件事的多個對象 / Create several items at once">
+                        <i class="fa-solid fa-layer-group"></i>
+                        <span>新增大項 <span class="text-[10px] opacity-80">/ Group</span></span>
+                    </button>
                     <button @click="exportCSV()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm px-3 py-2 rounded-xl font-medium transition flex items-center gap-1.5" title="匯出 CSV / Export CSV">
                         <i class="fa-solid fa-file-csv"></i>
                         <span class="hidden sm:inline">匯出 CSV</span>
@@ -1048,6 +1052,71 @@
             </div>
         </div>
 
+        <!-- ===== 新增大項：一次建好整組 ===== -->
+        <div x-show="newGroupModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" role="dialog" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div @click="newGroupModal = false" class="fixed inset-0 bg-slate-900/60"></div>
+                <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-xl w-full max-w-xl">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+                        <h3 class="text-base font-bold" x-text="L('新增大項（一次建好整組）', 'New group (create several items at once)')"></h3>
+                        <button @click="newGroupModal = false" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <form @submit.prevent="saveNewGroup()" class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-bold text-slate-700 mb-1" x-text="L('大項名稱 *', 'Group title *')"></label>
+                                <input type="text" x-model="ng.title" required :placeholder="L('例如：萬佳堡會議', 'e.g. Wanjiabao meetings')" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            </div>
+                            <div x-show="!asStaff">
+                                <label class="block text-xs font-bold text-slate-700 mb-1">負責同仁 *</label>
+                                <select x-model="ng.assignee" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl">
+                                    <template x-for="m in memberNames" :key="m"><option :value="m" x-text="m" :selected="m === ng.assignee"></option></template>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1" x-text="L('狀態', 'Status')"></label>
+                                <select x-model="ng.status" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl">
+                                    <option value="Not Started">尚未開始 / Not Started</option>
+                                    <option value="In Progress">進行中 / In Progress</option>
+                                    <option value="Pending">等待中、卡關中 / Awaiting</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" x-text="L('對象（一行一個）*', 'Items (one per line) *')"></label>
+                            <textarea x-model="ng.lines" rows="5" required :placeholder="L('第一場\n第二場\n第三場\n第四場', 'Meeting 1\nMeeting 2\nMeeting 3\nMeeting 4')" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"></textarea>
+                            <p class="text-[11px] text-slate-500 mt-1" x-text="L('每一行會變成一筆，可以各自打勾。可以填公司名稱或場次。目前 ' + ngLines.length + ' 筆。', 'Each line becomes one item you can check off. ' + ngLines.length + ' item(s) now.')"></p>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-sky-700 mb-1" x-text="L('中途檢查點', 'Checkpoint')"></label>
+                                <input type="date" x-model="ng.checkpointDate" class="w-full text-sm p-2.5 bg-sky-50/50 border border-sky-200 rounded-xl mb-1.5">
+                                <input type="text" x-model="ng.checkpoint" :placeholder="L('備註（選填）', 'Note (optional)')" class="w-full text-sm p-2 bg-white border border-sky-200 rounded-xl">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-rose-700 mb-1" x-text="L('預計完成日', 'Deadline')"></label>
+                                <input type="date" x-model="ng.deadlineDate" class="w-full text-sm p-2.5 bg-rose-50/50 border border-rose-200 rounded-xl mb-1.5">
+                                <input type="text" x-model="ng.deadline" :placeholder="L('備註（選填）', 'Note (optional)')" class="w-full text-sm p-2 bg-white border border-rose-200 rounded-xl">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" x-text="L('重要性', 'Importance')"></label>
+                            <span class="stars stars-lg">
+                                <template x-for="n in 5" :key="n">
+                                    <button type="button" class="star-btn" :class="n <= (ng.stars || 0) ? 'on' : ''" @click="ng.stars = (ng.stars || 0) === n ? 0 : n" :aria-label="n + ' 顆星'">★</button>
+                                </template>
+                            </span>
+                        </div>
+                        <p class="text-[11px] text-slate-500" x-text="L('建好之後，每一場的日期、窗口、進度可以展開大項後各自修改；整組要改用「編輯大項」。', 'After creating, edit each item from inside the group, or use Edit group for all.')"></p>
+                        <div class="flex justify-end space-x-3 pt-3 border-t">
+                            <button type="button" @click="newGroupModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition" x-text="L('取消', 'Cancel')"></button>
+                            <button type="submit" :disabled="ngLines.length < 1" class="px-5 py-2 text-sm bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-semibold rounded-xl shadow-xs transition" x-text="L('建立 ' + ngLines.length + ' 筆', 'Create ' + ngLines.length)"></button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
         <!-- ===== 垃圾桶：刪掉的任務可以還原 ===== -->
         <div x-show="trashModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" role="dialog" aria-modal="true">
             <div class="flex items-center justify-center min-h-screen p-4">
@@ -1265,7 +1334,7 @@
         <!-- Footer -->
         <footer class="bg-white border-t border-slate-200 py-4 mt-auto no-print">
             <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
-                工作進度與任務交接追蹤系統 &copy; Task Handover & Progress Tracker. All rights reserved. · V3
+                工作進度與任務交接追蹤系統 &copy; Task Handover & Progress Tracker. All rights reserved. · V4
             </div>
         </footer>
     </div>
@@ -1396,6 +1465,8 @@
                 groupModal: false,
                 gEdit: {},
                 trashModal: false,
+                newGroupModal: false,
+                ng: {},
                 _formOrig: null,
                 mForm: {},
                 gForm: {},
@@ -1802,6 +1873,38 @@
                     if (status) e.status = status;
                     if (text) e.text = String(text).slice(0, 300);
                     return { log: firebase.firestore.FieldValue.arrayUnion(e) };
+                },
+
+                // ===== 新增大項：一次建好整組 =====
+                openNewGroup() {
+                    this.ng = {
+                        title: '', lines: '', status: 'In Progress', stars: 0,
+                        assignee: this.asStaff ? this.viewName : (this.selectedMember !== 'All' ? this.selectedMember : (this.memberNames[0] || '')),
+                        checkpoint: '', checkpointDate: '', deadline: '', deadlineDate: ''
+                    };
+                    this.newGroupModal = true;
+                },
+                get ngLines() { return (this.ng.lines || '').split('\n').map(x => x.trim()).filter(Boolean); },
+                async saveNewGroup() {
+                    const g = this.clean(this.ng), lines = this.ngLines;
+                    const title = (g.title || '').trim();
+                    if (!title || !lines.length) return;
+                    const assignee = this.asStaff ? (this.myName || this.viewName) : g.assignee;
+                    if (!assignee) return;
+                    const base = Date.now(), gid = String(base), who = this.whoAmI();
+                    this.newGroupModal = false;
+                    await Promise.all(lines.map((company, i) => this.saveOne({
+                        id: base + i, groupId: gid, assignee,
+                        title: this.asStaff ? '' : title, titleEn: this.asStaff ? title : '',
+                        company, contact: '', phone: '',
+                        status: g.status || 'In Progress', stars: g.stars || 0,
+                        checkpoint: (g.checkpoint || '').trim(), checkpointDate: g.checkpointDate || '',
+                        deadline: (g.deadline || '').trim(), deadlineDate: g.deadlineDate || '',
+                        currentStatus: '', proposedSolution: '', managerNotes: '',
+                        log: [{ at: base, by: who, status: g.status || 'In Progress' }]
+                    })));
+                    const key = assignee + '|g:' + gid;
+                    if (!this.expandedGroups.includes(key)) this.expandedGroups.push(key);
                 },
 
                 // ===== 垃圾桶 =====
