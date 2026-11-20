@@ -1,0 +1,2391 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full bg-slate-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工作進度與任務交接追蹤表 | Task Handover & Progress Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0f7ff',
+                            100: '#e0effe',
+                            500: '#0284c7',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            900: '#0c4a6e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Alpine.js for Interactive Logic -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Firebase（與打卡系統同一個專案，資料存在雲端，所有瀏覽器同步） -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+    <!-- 打勾慶祝的彩帶 -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+    <style>
+        @media print {
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+            body { background: white !important; font-size: 11pt; }
+            .card-shadow { box-shadow: none !important; border: 1px solid #cbd5e1 !important; }
+        }
+        [x-cloak] { display: none !important; }
+        /* 打勾慶祝 */
+        html body .cheer{ position:fixed; left:50%; top:18px; z-index:80; transform:translate(-50%,-24px); opacity:0; pointer-events:none;
+            background:var(--grad); color:#fff; border-radius:14px; padding:10px 18px; font-size:15px; font-weight:700;
+            box-shadow:0 10px 30px rgba(31,75,79,.3); display:flex; align-items:center; gap:8px; white-space:nowrap; transition:all .35s; }
+        html body .cheer.show{ opacity:1; transform:translate(-50%,0); }
+        html body .cheer-pop{ animation:cheerpop .45s ease; }
+        @keyframes cheerpop{ 0%{transform:scale(1)} 40%{transform:scale(1.35)} 100%{transform:scale(1)} }
+        @media (prefers-reduced-motion: reduce){ html body .cheer-pop{ animation:none; } }
+        /* 重要性星等 */
+        html body .stars{ display:inline-flex; align-items:center; gap:1px; }
+        html body .star-btn{ background:none; border:0; padding:0 1px; font-size:16px; line-height:1; color:#d9d2c9; cursor:pointer; transition:transform .1s; }
+        html body .star-btn:hover{ transform:scale(1.2); }
+        html body .star-btn.on{ color:#e0a020; }
+        html body .stars-lg .star-btn{ font-size:26px; padding:0 3px; }
+
+        /* ===== 到期提醒視窗（配色沿用頁首深藍綠、陶土橘、暖沙） ===== */
+        html body .due-mask{ position:fixed; inset:0; z-index:60; background:rgba(31,75,79,.45); display:flex; align-items:flex-start; justify-content:center; padding:48px 12px; overflow-y:auto; }
+        html body .due-box{ background:#fffdfa; border:1px solid #eadfd2; border-radius:16px; width:100%; max-width:460px; overflow:hidden; box-shadow:0 20px 50px rgba(31,75,79,.25); color:#2f3b3b; }
+        html body .due-head{ background:var(--grad); color:#fff; padding:14px 16px; display:flex; align-items:center; gap:10px; }
+        html body .due-head .sub{ font-size:12px; color:#cfe3e1; }
+        html body .due-sec{ padding:12px 16px 6px; font-size:13px; font-weight:700; display:flex; align-items:center; gap:6px; }
+        html body .due-sec .dot{ width:8px; height:8px; border-radius:50%; }
+        html body .due-list{ margin:0 12px; border-radius:12px; overflow:hidden; border:1px solid; }
+        html body .due-item{ display:block; width:100%; text-align:left; padding:10px 12px; background:transparent; border:0; border-radius:0; white-space:normal; cursor:pointer; }
+        html body .due-item + .due-item{ border-top:1px solid rgba(0,0,0,.06); }
+        html body .due-item:hover{ background:rgba(255,255,255,.55); }
+        html body .due-item .t{ font-size:14px; font-weight:700; margin-top:4px; color:#2f3b3b; }
+        html body .due-item .d{ font-size:12px; }
+        html body .due-over .due-sec{ color:#9a4a22; } html body .due-over .dot{ background:#c8693c; } html body .due-over .due-list{ background:#f9ece4; border-color:#ecd2c2; } html body .due-over .d{ color:#9a4a22; }
+        html body .due-today .due-sec{ color:#7a5410; } html body .due-today .dot{ background:#c08a2e; } html body .due-today .due-list{ background:#f8efdc; border-color:#ecd9b3; } html body .due-today .d{ color:#7a5410; }
+        html body .due-soon .due-sec{ color:#24605f; } html body .due-soon .dot{ background:#24605f; } html body .due-soon .due-list{ background:#eaf5f3; border-color:#c3dedb; } html body .due-soon .d{ color:#24605f; }
+        html body .due-btns{ display:flex; gap:8px; padding:14px 12px 6px; }
+        html body .due-btns button{ flex:1; border-radius:12px; font-size:14px; }
+        html body .due-snooze{ background:#fffdfa; color:#24605f; border:1px solid #c3dedb; }
+        html body .due-ok{ background:var(--grad); color:#fff; border:0; font-weight:700; }
+        html body .due-row + .due-row{ border-top:1px solid rgba(0,0,0,.06); }
+        html body .due-row .due-item + .due-item{ border-top:0; }
+        html body .due-mail{ display:flex; align-items:center; justify-content:center; min-width:48px; color:#24605f; font-size:18px; border-left:1px solid rgba(0,0,0,.06); }
+        html body .due-mail:hover{ background:rgba(255,255,255,.6); }
+        html body .due-flash{ box-shadow:0 0 0 3px #c8693c !important; border-radius:20px; transition:box-shadow .3s; }
+
+        /* ===== 玻璃質感（只改外觀）：沙丘陶土配色（深藍綠＋暖沙＋陶土橘點綴）；圓角 12；單一淡陰影；字級 22／16／14／12
+           前面加 html body 提高權重，蓋過 Tailwind 執行時插入的樣式 ===== */
+        :root{ --pri:#24605f; --pri-dark:#1f4b4f; --acc:#c8693c; --pri-soft:#d9efed; --r:12px;
+               --grad:linear-gradient(135deg,#1f4b4f 0%,#2c6a6b 55%,#3e8a85 100%);
+               --glass:rgba(255,255,255,.62); --glass-bd:rgba(255,255,255,.78); --sh:0 10px 40px rgba(31,75,79,.08); }
+        html, html body{ background:
+            radial-gradient(1100px 600px at 0% -10%,#f4dfcc 0%,transparent 60%),
+            radial-gradient(900px 600px at 110% 5%,#f1e7d8 0%,transparent 55%),
+            radial-gradient(900px 700px at 50% 115%,#ecdcd0 0%,transparent 60%),
+            #faf4ee !important; background-attachment:fixed !important; min-height:100%; }
+        html body{ font-family:"Noto Sans TC",-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif; overflow-x:hidden; }
+        /* 寬螢幕置中；人物多時區塊平均分配 */
+        html body .max-w-7xl{ max-width:1200px; }
+        html body .eqgrid{ display:grid; grid-template-columns:minmax(0,1fr); }
+        @media (min-width:768px){ html body .eqgrid{ grid-template-columns:repeat(min(var(--cols,1),2),minmax(0,1fr)); } }
+        @media (min-width:1024px){ html body .eqgrid{ grid-template-columns:repeat(var(--cols,1),minmax(0,1fr)); } }
+        /* 頂列：深藍漸層玻璃 */
+        html body header.bg-slate-900{ background:var(--grad) !important; box-shadow:0 8px 30px rgba(31,75,79,.25); }
+        html body header .bg-sky-600{ background:var(--acc); box-shadow:0 6px 16px rgba(200,105,60,.30); }
+        html body header .bg-slate-800{ background:rgba(255,255,255,.14); border-color:rgba(255,255,255,.28); color:#fff; backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); }
+        html body header .bg-slate-800:hover{ background:rgba(255,255,255,.22); }
+        html body header .text-slate-400{ color:#dbe7ff; }
+        /* 卡片：霧面玻璃 */
+        html body main .bg-white{ background:var(--glass); backdrop-filter:blur(22px) saturate(1.4); -webkit-backdrop-filter:blur(22px) saturate(1.4); border-color:var(--glass-bd); }
+        html body main .bg-slate-50, html body main .bg-slate-100{ background:rgba(255,255,255,.55); }
+        html body .member-block{ background:rgba(255,255,255,.35); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); }
+        html body .rounded-md, html body .rounded-lg, html body .rounded-xl{ border-radius:var(--r); }
+        html body .rounded-2xl{ border-radius:20px; }
+        html body .shadow, html body .shadow-xs, html body .shadow-sm, html body .shadow-md, html body .shadow-lg, html body .shadow-xl, html body .card-shadow{ box-shadow:var(--sh); }
+        /* 主要按鈕與選中狀態：藍色漸層 */
+        html body .bg-sky-500, html body .bg-sky-600{ background:var(--grad); border-color:transparent; box-shadow:0 6px 16px rgba(31,75,79,.25); }
+        html body .bg-sky-500:hover, html body .bg-sky-600:hover{ filter:brightness(1.06); }
+        html body main .bg-slate-900, html body main .bg-slate-800, html body main .bg-slate-700{ background:var(--grad); color:#fff; }
+        html body .text-sky-500, html body .text-sky-600, html body .text-sky-700, html body .text-sky-800{ color:var(--pri); }
+        html body .bg-sky-50, html body .bg-sky-100{ background-color:var(--pri-soft); }
+        html body .hover\:border-sky-500:hover, html body .hover\:border-sky-400:hover, html body .border-sky-500{ border-color:var(--pri); }
+        html body .focus\:ring-sky-500:focus{ --tw-ring-color:rgba(36,96,95,.35); }
+        /* 對話框：較不透明，好閱讀 */
+        html body .fixed .bg-white{ background:rgba(255,255,255,.94); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); }
+        html body .fixed .bg-slate-900{ background:var(--grad); }
+        /* 字級 4 級 */
+        html body .text-4xl, html body .text-3xl, html body .text-2xl, html body .text-xl{ font-size:22px; line-height:1.3; }
+        html body .text-lg, html body .text-base{ font-size:16px; line-height:1.5; }
+        html body .text-sm{ font-size:14px; line-height:1.5; }
+        html body .text-xs, html body .text-\[11px\], html body .text-\[10px\]{ font-size:12px; line-height:1.5; }
+        @media (min-width:640px){ html body .sm\:text-sm{ font-size:14px; } html body .sm\:text-base{ font-size:16px; } }
+        /* 間距對齊 8 的倍數 */
+        html body .p-2\.5{ padding:8px; } html body .px-2\.5{ padding-left:8px; padding-right:8px; }
+        html body .py-1\.5{ padding-top:8px; padding-bottom:8px; } html body .gap-1\.5{ gap:8px; }
+        html body .p-5{ padding:24px; } html body .px-5{ padding-left:24px; padding-right:24px; }
+        /* 對比 */
+        html body main .text-slate-400{ color:#64748b; }
+        html body input::placeholder, html body textarea::placeholder{ color:#64748b; }
+        /* 可點的東西至少 44px 高 */
+        html body button, html body select, html body textarea,
+        html body input:not([type=checkbox]):not([type=radio]):not([type=hidden]){ min-height:44px; }
+        html body input[type=checkbox]{ width:22px; height:22px; }
+        html body button{ white-space:nowrap; }
+        html body button.w-6.h-6, html body button.w-5.h-5{ min-height:0; position:relative; border-radius:6px; }
+        html body button.w-6.h-6::after, html body button.w-5.h-5::after{ content:""; position:absolute; inset:-11px; }
+        html body button.p-2, html body button.p-1\.5{ min-width:44px; display:inline-flex; align-items:center; justify-content:center; }
+        html body button:focus-visible, html body a:focus-visible, html body input:focus-visible, html body select:focus-visible, html body textarea:focus-visible{ outline:3px solid var(--pri); outline-offset:2px; }
+        html body button:disabled{ opacity:.45; cursor:not-allowed; }
+        /* 人物篩選列可以橫向捲動 */
+        html body .space-x-1\.5:has(> template){ flex-wrap:wrap; row-gap:8px; }
+    </style>
+</head>
+<body class="h-full text-slate-800 antialiased font-sans" x-data="taskApp()" x-init="initData()">
+
+    <!-- 登入畫面（與打卡系統同一組帳號） -->
+    <div x-show="authState !== 'in'" x-cloak class="no-print fixed inset-0 z-50 bg-slate-100 flex items-center justify-center p-4">
+        <div class="w-full max-w-sm bg-white rounded-2xl shadow-lg p-6 space-y-4">
+            <div class="text-center">
+                <div class="inline-flex p-3 bg-sky-50 text-sky-600 rounded-xl mb-2"><i class="fa-solid fa-list-check text-xl"></i></div>
+                <h2 class="text-lg font-bold">工作進度與任務交接追蹤表</h2>
+                <p class="text-xs text-slate-500">請用打卡系統的帳號登入 / Sign in with your check-in account</p>
+            </div>
+            <div x-show="authState === 'loading'" class="text-center text-sm text-slate-500 py-4">
+                <i class="fa-solid fa-spinner fa-spin"></i> 載入中 / Loading…
+            </div>
+            <form x-show="authState === 'out'" @submit.prevent="login()" class="space-y-3">
+                <input type="email" x-model="loginEmail" autocomplete="username" required placeholder="Email"
+                       class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                <input type="password" x-model="loginPw" autocomplete="current-password" required placeholder="密碼 / Password"
+                       class="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500">
+                <p x-show="loginError" x-text="loginError" class="text-xs text-rose-600"></p>
+                <button type="submit" :disabled="loginBusy"
+                        class="w-full bg-sky-600 hover:bg-sky-500 disabled:opacity-60 text-white text-sm font-medium py-2 rounded-xl transition">
+                    <span x-text="loginBusy ? '登入中… / Signing in…' : '登入 / Sign in'"></span>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- 打勾慶祝訊息 -->
+    <div class="cheer no-print" :class="cheer.show ? 'show' : ''" role="status" aria-live="polite">
+        <i class="fa-solid fa-champagne-glasses" style="color:#f3c9ad"></i><span x-text="cheer.text"></span>
+    </div>
+
+    <!-- 雲端同步錯誤提示 -->
+    <div x-show="syncError" x-cloak class="no-print bg-rose-600 text-white text-sm px-4 py-2 text-center" x-text="syncError"></div>
+    <div x-show="authState === 'in' && !isManager && !myName" x-cloak class="no-print bg-amber-100 text-amber-900 text-sm px-4 py-2 text-center">
+        Your account is not linked to a staff name yet. Please ask Eva to add your email in the staff list.
+    </div>
+    <div x-show="isManager && previewAs" x-cloak class="no-print sticky top-0 z-40 text-sm px-4 py-2 flex flex-wrap items-center justify-center gap-3" style="background:#c8693c;color:#fff">
+        <span><i class="fa-regular fa-eye"></i> 正在以 <b x-text="previewAs"></b> 的身分預覽（他看到的就是這樣；你在這裡做的修改會真的存檔）</span>
+        <button type="button" @click="startPreview('')" class="bg-white/90 text-xs font-bold px-3 py-1 rounded-lg" style="min-height:32px;color:#9a4a22">結束預覽</button>
+    </div>
+    <div x-show="isManager && trMsg" x-cloak class="no-print text-xs px-4 py-1.5 text-center" :class="trError ? 'bg-rose-100 text-rose-800' : 'bg-teal-50 text-teal-800'" x-text="trMsg"></div>
+
+    <div class="min-h-full flex flex-col">
+        <!-- Top Navigation / Header -->
+        <header class="bg-slate-900 text-white shadow-md no-print">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center space-x-3">
+                    <div class="p-2.5 bg-sky-500/20 text-sky-400 rounded-xl border border-sky-500/30">
+                        <i class="fa-solid fa-list-check text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-bold tracking-tight">工作進度與任務交接追蹤表</h1>
+                        <p class="text-xs text-slate-400">Work Progress & Task Handover Tracker</p>
+                    </div>
+                </div>
+
+                <!-- Global Actions & Export Buttons -->
+                <div class="flex items-center space-x-2 sm:space-x-3">
+                    <button @click="openModal(null)" class="bg-sky-600 hover:bg-sky-500 text-white text-xs sm:text-sm px-3.5 py-2 rounded-xl font-medium shadow-xs transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-plus"></i>
+                        <span>新增任務 <span class="text-[10px] opacity-80">/ Add</span></span>
+                    </button>
+                    <button @click="exportCSV()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm px-3 py-2 rounded-xl font-medium transition flex items-center gap-1.5" title="匯出 CSV / Export CSV">
+                        <i class="fa-solid fa-file-csv"></i>
+                        <span class="hidden sm:inline">匯出 CSV</span>
+                    </button>
+                    <button @click="window.print()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm px-3 py-2 rounded-xl font-medium transition flex items-center gap-1.5">
+                        <i class="fa-solid fa-print"></i>
+                        <span class="hidden sm:inline">列印 / Print</span>
+                    </button>
+                    <button x-show="dueSections.length" @click="dueModal = true" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm px-3 py-2 rounded-xl font-medium transition flex items-center gap-1.5" :title="L('快到期的任務', 'Tasks due soon')">
+                        <i class="fa-regular fa-bell"></i><span x-text="dueSections.reduce((n, s) => n + s.items.length, 0)"></span>
+                    </button>
+                    <div x-show="isManager && !previewAs" class="relative" @click.outside="previewOpen = false">
+                        <button type="button" @click="previewOpen = !previewOpen" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm px-3 py-2 rounded-xl font-medium transition flex items-center gap-1.5" title="用某位同事的身分看畫面">
+                            <i class="fa-regular fa-eye"></i><span class="hidden sm:inline">預覽同事畫面</span>
+                        </button>
+                        <div x-show="previewOpen" x-cloak class="absolute right-0 mt-2 z-50 rounded-xl p-2 flex flex-col gap-1 min-w-[180px]" style="background:#fffdfa;border:1px solid #eadfd2;box-shadow:0 12px 30px rgba(31,75,79,.25)">
+                            <div class="text-[11px] px-2 pt-1 pb-1" style="color:#6b7a78">用誰的身分看？</div>
+                            <template x-for="m in previewMembers" :key="m.name">
+                                <button type="button" @click="previewOpen = false; startPreview(m.name)" class="text-left text-sm px-3 py-2 rounded-lg flex items-center gap-2 hover:bg-slate-100" style="color:#2f3b3b">
+                                    <span class="w-2.5 h-2.5 rounded-full" :style="`background:${mColor(m.name).main}`"></span>
+                                    <span x-text="m.name"></span>
+                                    <span x-show="!m.email" class="text-[11px]" style="color:#9a4a22">未填 email</span>
+                                </button>
+                            </template>
+                            <div x-show="!previewMembers.length" class="text-xs px-3 py-2" style="color:#6b7a78">還沒有同事，先到「人物」新增</div>
+                        </div>
+                    </div>
+                    <button x-show="!asStaff" @click="trashModal = true" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs sm:text-sm px-3 py-2 rounded-xl font-medium transition flex items-center gap-1.5" title="已刪除的任務，可以還原">
+                        <i class="fa-regular fa-trash-can"></i><span x-show="trashTasks.length" x-text="trashTasks.length"></span>
+                    </button>
+                    <span class="hidden md:inline text-[11px] text-slate-400" :title="userEmail">
+                        <i class="fa-solid fa-cloud" :class="syncError ? 'text-rose-400' : 'text-emerald-400'"></i>
+                        <span x-text="userEmail"></span>
+                    </span>
+                    <button @click="logout()" class="text-slate-400 hover:text-white text-xs p-2 transition" title="登出 / Sign out">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <!-- ===== 頁面切換（只有管理者看得到「一對一面談」） ===== -->
+            <div x-show="canOoo && !previewAs" x-cloak class="no-print flex items-center bg-white border border-slate-200 p-1 rounded-xl mb-6 w-fit shadow-xs">
+                <button @click="page = 'tasks'" :class="page === 'tasks' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'"
+                        class="px-4 py-2 text-xs sm:text-sm rounded-lg transition flex items-center gap-2">
+                    <i class="fa-solid fa-list-check"></i> 任務追蹤
+                </button>
+                <button @click="page = 'ooo'" :class="page === 'ooo' ? 'bg-slate-900 text-white font-bold' : 'text-slate-600 hover:text-slate-900'"
+                        class="px-4 py-2 text-xs sm:text-sm rounded-lg transition flex items-center gap-2">
+                    <i class="fa-solid fa-user-lock"></i> 一對一面談 <span class="text-[10px] opacity-70">（只有你看得到）</span>
+                </button>
+            </div>
+
+            <!-- ===== 一對一面談 ===== -->
+            <div x-show="canOoo && !previewAs && page === 'ooo'" x-cloak class="space-y-6">
+
+                <!-- 權限尚未設定：顯示要貼到 Firebase 的規則 -->
+                <div x-show="oooError === 'permission'" class="bg-rose-50 border border-rose-200 rounded-2xl p-5 space-y-3">
+                    <div class="font-bold text-rose-800 flex items-center gap-2"><i class="fa-solid fa-lock"></i> 還沒開啟面談紀錄的權限</div>
+                    <p class="text-sm text-rose-900">請到 Firebase 主控台 → Firestore Database → 規則（Rules），在 <code>match /databases/{database}/documents {</code> 裡面加上下面這段，按「發布」。加好後重新整理這頁。</p>
+                    <pre class="bg-white border border-rose-200 rounded-xl p-3 text-xs overflow-x-auto" x-text="oooRule"></pre>
+                    <button @click="navigator.clipboard && navigator.clipboard.writeText(oooRule)" class="text-xs bg-rose-600 hover:bg-rose-500 text-white px-3 py-1.5 rounded-lg"><i class="fa-regular fa-copy"></i> 複製規則</button>
+                    <p class="text-xs text-rose-800">注意：如果規則裡有一條「所有登入者都能讀寫全部資料」的總開關（例如 <code>match /{document=**}</code> 搭配 <code>request.auth != null</code>），同事一樣讀得到，請把那條拿掉，改成每個集合各自設定。</p>
+                </div>
+
+                <div x-show="oooError === 'network'" class="text-sm text-rose-700">面談紀錄連線失敗，請檢查網路後重新整理。</div>
+                <!-- 兩位同仁摘要 -->
+                <div class="eqgrid gap-5" :style="`--cols:${Math.min(memberNames.length, 3)}`">
+                    <template x-for="p in memberNames" :key="p">
+                        <button @click="oooPerson = p" class="text-left bg-white p-5 rounded-2xl border shadow-xs transition"
+                                :class="oooPerson === p ? 'ring-2' : 'border-slate-200 hover:border-slate-300'" :style="oooPerson === p ? `border-color:${mColor(p).main};--tw-ring-color:${mColor(p).soft}` : ''">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm"
+                                         :style="avatarStyle(p)" x-text="p[0]"></div>
+                                    <span class="font-bold text-slate-800" x-text="p"></span>
+                                </div>
+                                <span class="text-xs px-2 py-0.5 rounded-full font-semibold"
+                                      :class="personSummary(p).overdue ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-600'"
+                                      x-text="personSummary(p).next ? '下次面談 ' + personSummary(p).next + (personSummary(p).overdue ? '（已過）' : '') : '未排下次面談'"></span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2 mt-4 text-center">
+                                <div class="bg-slate-50 rounded-xl py-2"><div class="text-[10px] text-slate-500">上次面談</div><div class="text-sm font-bold text-slate-700" x-text="personSummary(p).last || '—'"></div></div>
+                                <div class="bg-slate-50 rounded-xl py-2"><div class="text-[10px] text-slate-500">未完成約定</div><div class="text-sm font-bold" :class="personSummary(p).open ? 'text-amber-700' : 'text-slate-700'" x-text="personSummary(p).open"></div></div>
+                                <div class="bg-slate-50 rounded-xl py-2"><div class="text-[10px] text-slate-500">目標</div><div class="text-sm font-bold text-slate-700" x-text="personSummary(p).goals"></div></div>
+                            </div>
+                        </button>
+                    </template>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <h2 class="text-lg font-bold text-slate-800 mr-auto"><span x-text="oooPerson"></span> 的面談與目標</h2>
+                    <button @click="openMeeting(null)" class="bg-sky-600 hover:bg-sky-500 text-white text-sm px-3.5 py-2 rounded-xl font-medium flex items-center gap-1.5"><i class="fa-solid fa-plus"></i> 新增面談紀錄</button>
+                    <button @click="openGoal(null)" class="bg-white border border-slate-300 hover:border-sky-400 text-slate-700 text-sm px-3.5 py-2 rounded-xl font-medium flex items-center gap-1.5"><i class="fa-solid fa-bullseye"></i> 新增目標</button>
+                </div>
+
+                <!-- 目標 -->
+                <section class="bg-white rounded-2xl border border-slate-200 p-5 space-y-3">
+                    <h3 class="text-sm font-bold text-slate-600 flex items-center gap-2"><i class="fa-solid fa-bullseye text-sky-600"></i> 目標</h3>
+                    <p x-show="goalsOf(oooPerson).length === 0" class="text-sm text-slate-400">還沒有目標。可以在面談時和對方一起訂 2–3 個，例如這一季要獨立完成的工作。</p>
+                    <template x-for="g in goalsOf(oooPerson)" :key="g.id">
+                        <div class="border border-slate-200 rounded-xl p-3.5 flex flex-col gap-2">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <span class="font-semibold text-slate-800" x-text="g.title"></span>
+                                <span class="text-[11px] px-2 py-0.5 rounded-md bg-slate-100 text-slate-600" x-show="g.period" x-text="g.period"></span>
+                                <span class="text-[11px] px-2 py-0.5 rounded-md font-bold" :class="g.status === '達成' ? 'bg-emerald-100 text-emerald-800' : g.status === '暫停' ? 'bg-slate-100 text-slate-600' : 'bg-sky-100 text-sky-800'" x-text="g.status || '進行中'"></span>
+                                <div class="ml-auto flex gap-1">
+                                    <button @click="openGoal(g)" class="p-1.5 text-slate-500 hover:text-indigo-600" title="編輯"><i class="fa-solid fa-pen-to-square text-xs"></i></button>
+                                    <button @click="deleteOoo(g)" class="p-1.5 text-slate-400 hover:text-rose-600" title="刪除"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <div class="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-sky-500 rounded-full" :style="`width:${g.progress || 0}%`"></div></div>
+                                <span class="text-xs font-semibold text-slate-600 w-10 text-right" x-text="(g.progress || 0) + '%'"></span>
+                            </div>
+                            <p x-show="g.notes" class="text-sm text-slate-600 whitespace-pre-line" x-text="g.notes"></p>
+                        </div>
+                    </template>
+                </section>
+
+                <!-- 面談時間軸 -->
+                <section class="space-y-4">
+                    <p x-show="meetingsOf(oooPerson).length === 0" class="text-center text-sm text-slate-400 bg-white border border-slate-200 rounded-2xl py-10">還沒有面談紀錄。按「新增面談紀錄」記下第一次談話。</p>
+                    <template x-for="m in meetingsOf(oooPerson)" :key="m.id">
+                        <article class="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                            <div class="px-5 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
+                                <span class="font-bold text-slate-800"><i class="fa-regular fa-calendar text-slate-400 mr-1"></i><span x-text="m.date"></span></span>
+                                <span x-show="m.nextDate" class="text-xs text-slate-500">下次：<span x-text="m.nextDate"></span></span>
+                                <div class="ml-auto flex gap-1">
+                                    <button @click="openMeeting(m)" class="p-1.5 text-slate-500 hover:text-indigo-600" title="編輯"><i class="fa-solid fa-pen-to-square text-xs"></i></button>
+                                    <button @click="deleteOoo(m)" class="p-1.5 text-slate-400 hover:text-rose-600" title="刪除"><i class="fa-solid fa-trash-can text-xs"></i></button>
+                                </div>
+                            </div>
+                            <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                                <div class="bg-slate-50 p-3 rounded-xl"><div class="text-[11px] font-bold text-slate-600 mb-1">談話重點</div><p class="whitespace-pre-line text-slate-700" x-text="m.topics || '—'"></p></div>
+                                <div class="bg-slate-50 p-3 rounded-xl"><div class="text-[11px] font-bold text-slate-600 mb-1">對方提出的問題／想法</div><p class="whitespace-pre-line text-slate-700" x-text="m.staffInput || '—'"></p></div>
+                                <div class="bg-slate-50 p-3 rounded-xl"><div class="text-[11px] font-bold text-slate-600 mb-1">我給的回饋</div><p class="whitespace-pre-line text-slate-700" x-text="m.feedback || '—'"></p></div>
+                                <div x-show="m.privateNotes" class="md:col-span-3 bg-amber-50 border border-amber-200 p-3 rounded-xl"><div class="text-[11px] font-bold text-amber-900 mb-1"><i class="fa-solid fa-eye-slash"></i> 私下觀察</div><p class="whitespace-pre-line text-slate-700" x-text="m.privateNotes"></p></div>
+                            </div>
+                            <div x-show="(m.agreements || []).length" class="px-5 pb-5">
+                                <div class="text-[11px] font-bold text-emerald-800 mb-2">約定事項</div>
+                                <ul class="space-y-1.5">
+                                    <template x-for="(a, i) in (m.agreements || [])" :key="i">
+                                        <li class="flex items-start gap-2.5 text-sm">
+                                            <button @click="toggleAgreement(m, i)" :disabled="!!linkedTask(a)"
+                                                    class="mt-0.5 w-5 h-5 flex-shrink-0 rounded-md border-2 flex items-center justify-center"
+                                                    :class="agreementDone(a) ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent'"
+                                                    :title="linkedTask(a) ? '已轉成任務，跟著任務狀態' : '標示完成'"><i class="fa-solid fa-check text-[10px]"></i></button>
+                                            <span class="flex-1" :class="agreementDone(a) ? 'line-through text-slate-400' : 'text-slate-700'" x-text="a.text"></span>
+                                            <template x-if="linkedTask(a)">
+                                                <span class="text-[11px] px-2 py-0.5 rounded-md font-bold whitespace-nowrap" :class="getStatusBadgeClass(linkedTask(a).status)" x-text="'任務：' + getStatusLabel(linkedTask(a).status).split(' / ')[0]"></span>
+                                            </template>
+                                            <button x-show="!a.taskId" @click="agreementToTask(m, i)" class="text-[11px] text-sky-700 hover:bg-sky-50 px-2 py-0.5 rounded-md whitespace-nowrap" title="建立成任務追蹤表的任務（同仁看得到這一行文字）"><i class="fa-solid fa-arrow-right"></i> 轉成任務</button>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+                        </article>
+                    </template>
+                </section>
+            </div>
+
+            <div x-show="page === 'tasks'">
+
+            <!-- Summary Dashboard Cards -->
+            <div class="eqgrid gap-5 mb-6 no-print" :style="`--cols:${Math.min(memberNames.length + 1, 4)}`">
+                <!-- Overall Completion Stats -->
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+                    <div class="flex items-center justify-between pb-2">
+                        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider">團隊整體完成率 / Completion</span>
+                        <span class="text-xs font-bold text-sky-600 bg-sky-50 px-2.5 py-0.5 rounded-full" x-text="`${stats.completed}/${stats.total}`"></span>
+                    </div>
+                    <div class="flex items-end justify-between mt-2">
+                        <div>
+                            <span class="text-3xl font-extrabold text-slate-800" x-text="`${stats.percent}%`"></span>
+                            <span class="text-xs text-slate-400 ml-1">已結案 / Closed</span>
+                        </div>
+                        <div class="w-1/2 bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                            <div class="bg-emerald-500 h-full transition-all duration-500" :style="`width: ${stats.percent}%`"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 每位成員的進度（依成員數自動排列，寬度平均） -->
+                <template x-for="m in memberNames" :key="m">
+                <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+                    <div class="flex items-center justify-between pb-2">
+                        <div class="flex items-center gap-2 min-w-0">
+                            <div class="w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs flex-shrink-0" :style="avatarStyle(m)" x-text="m[0]"></div>
+                            <span class="text-sm font-bold text-slate-700 truncate" x-text="m + ' Progress'"></span>
+                        </div>
+                        <span class="text-xs font-semibold text-slate-500" x-text="`${memberStats(m).completed}/${memberStats(m).total}`"></span>
+                    </div>
+                    <div class="flex items-end justify-between mt-2">
+                        <span class="text-2xl font-bold text-slate-800" x-text="`${memberStats(m).percent}%`"></span>
+                        <div class="w-1/2 bg-slate-100 h-2 rounded-full overflow-hidden">
+                            <div class="h-full transition-all duration-500" :style="`width: ${memberStats(m).percent}%; background:${mColor(m).main}`"></div>
+                        </div>
+                    </div>
+                </div>
+                </template>
+            </div>
+
+            <!-- ===== 結案進度：本週／本月 ===== -->
+            <section class="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 mb-6">
+                <div class="flex flex-wrap items-center gap-3">
+                    <h2 class="text-base font-bold flex items-center gap-2" style="color:#1f4b4f"><i class="fa-regular fa-calendar-check"></i> <span x-text="L('結案進度', 'Closed tasks')"></span></h2>
+                    <div class="flex items-center bg-slate-100 p-1 rounded-xl no-print">
+                        <template x-for="p in reportPeriods" :key="p.id">
+                            <button type="button" @click="reportPeriod = p.id" class="px-3 py-1.5 text-xs rounded-lg transition"
+                                    :class="reportPeriod === p.id ? 'bg-white font-bold shadow-xs' : 'text-slate-600'" :style="reportPeriod === p.id ? 'color:#1f4b4f' : ''" x-text="p.name"></button>
+                        </template>
+                    </div>
+                    <span class="text-xs text-slate-500" x-text="report.range"></span>
+                </div>
+                <div class="flex flex-wrap items-end gap-4 mt-4">
+                    <div>
+                        <span class="text-3xl font-extrabold" style="color:#1f4b4f" x-text="report.items.length"></span>
+                        <span class="text-xs text-slate-500" x-text="L(' 件結案', ' closed')"></span>
+                        <span x-show="report.est" class="text-xs text-slate-400" x-text="L('（其中 ' + report.est + ' 件是舊資料估計）', ' (' + report.est + ' estimated)')"></span>
+                    </div>
+                    <template x-for="r in report.byMember" :key="r.name">
+                        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold" :style="badgeStyle(r.name)">
+                            <span x-text="r.name"></span><span x-text="r.count"></span>
+                        </span>
+                    </template>
+                </div>
+                <p x-show="!report.items.length" class="text-sm text-slate-500 mt-3" x-text="L('這段期間還沒有結案的任務。', 'Nothing closed in this period yet.')"></p>
+                <details x-show="report.items.length" class="mt-3">
+                    <summary class="text-xs font-bold cursor-pointer" style="color:#24605f" x-text="L('看明細', 'Show details')"></summary>
+                    <ul class="mt-2 divide-y divide-slate-100 text-sm">
+                        <template x-for="t in report.items" :key="t.id">
+                            <li class="py-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                <span class="text-xs tabular-nums text-slate-500 w-28" x-text="(t._est ? L('約 ', '~') : '') + fmtTime(t._at)"></span>
+                                <span class="px-2 py-0.5 rounded-md text-xs font-bold" :style="badgeStyle(t.assignee)" x-text="t.assignee"></span>
+                                <span class="font-medium text-slate-800" x-text="tx(t, 'title') + (t.company ? '・' + t.company : '')"></span>
+                            </li>
+                        </template>
+                    </ul>
+                </details>
+                <p class="text-[11px] text-slate-400 mt-2" x-text="L('依打勾結案的時間計算（伊斯坦堡時間，週一開始）。舊任務沒有打勾時間，用最後更新時間估計，明細標「約」；完全沒有時間記錄的不會算進來。', 'Based on when tasks were checked as closed (Istanbul time, weeks start Monday). Older tasks use their last update time (marked ~).')"></p>
+            </section>
+
+            <!-- Main Filter Bar & Active/Archived Tabs -->
+            <div class="bg-white rounded-2xl border border-slate-200 shadow-xs p-4 mb-6 no-print space-y-4">
+                
+                <!-- Top Row: View Tabs (Active vs Completed Archive) & Staff Selection -->
+                <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                    <!-- Tab Selector: Active vs Completed vs All -->
+                    <div class="flex flex-wrap items-center bg-slate-100 p-1 rounded-xl">
+                        <button @click="viewMode = 'Active'; selectedStatus = 'All'" 
+                                :class="viewMode === 'Active' ? 'bg-white text-sky-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'"
+                                class="px-4 py-2 text-xs sm:text-sm rounded-lg transition-all duration-200 flex items-center gap-2">
+                            <i class="fa-solid fa-list-check"></i>
+                            <span>進行中與等待中 / Active Tasks</span>
+                            <span class="px-1.5 py-0.5 text-[10px] rounded-full bg-sky-100 text-sky-800" x-text="activeTasksCount"></span>
+                        </button>
+
+                        <button @click="viewMode = 'Completed'; selectedStatus = 'All'" 
+                                :class="viewMode === 'Completed' ? 'bg-white text-emerald-700 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'"
+                                class="px-4 py-2 text-xs sm:text-sm rounded-lg transition-all duration-200 flex items-center gap-2">
+                            <i class="fa-solid fa-box-archive"></i>
+                            <span>已結案與歷史檔案 / Completed Archive</span>
+                            <span class="px-1.5 py-0.5 text-[10px] rounded-full bg-emerald-100 text-emerald-800" x-text="completedTasksCount"></span>
+                        </button>
+
+                        <button @click="viewMode = 'All'; selectedStatus = 'All'" 
+                                :class="viewMode === 'All' ? 'bg-white text-slate-800 shadow-xs font-bold' : 'text-slate-600 hover:text-slate-900'"
+                                class="px-3.5 py-2 text-xs sm:text-sm rounded-lg transition-all duration-200">
+                            所有項目 / All (<span x-text="tasks.length"></span>)
+                        </button>
+                    </div>
+
+                    <!-- Staff Switcher -->
+                    <div class="flex items-center space-x-1.5">
+                        <span class="text-xs font-bold text-slate-500 mr-1">成員 / Staff:</span>
+                        <button @click="selectedMember = 'All'" 
+                                :class="selectedMember === 'All' ? 'bg-slate-800 text-white font-semibold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                                class="px-3 py-1.5 text-xs rounded-xl transition">
+                            全部 / All
+                        </button>
+                        <template x-for="m in memberNames" :key="m">
+                        <button @click="selectedMember = m"
+                                :style="selectedMember === m ? `background:${mColor(m).main};color:#fff` : `background:${mColor(m).soft};color:${mColor(m).ink}`"
+                                :class="selectedMember === m ? 'font-semibold' : ''"
+                                class="px-3 py-1.5 text-xs rounded-xl transition flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full" :style="`background:${mColor(m).main}`"></span> <span x-text="m"></span>
+                        </button>
+                        </template>
+                        <button x-show="!asStaff" @click="memberPanel = !memberPanel" class="px-3 py-1.5 text-xs rounded-xl transition bg-white border border-dashed border-slate-300 text-slate-600 hover:border-sky-500" title="新增或移除人物 / Manage staff">
+                            <i class="fa-solid fa-user-plus"></i> 人物 / Staff
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 新增／移除人物 -->
+                <div x-show="memberPanel" x-cloak class="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                    <form @submit.prevent="addMember()" class="flex flex-wrap items-center gap-2">
+                        <input type="text" x-model="newMemberName" maxlength="20" placeholder="新人物的名字 / Name" class="flex-1 min-w-[160px] text-sm px-3 py-2 bg-white border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500">
+                        <button type="submit" class="bg-sky-600 hover:bg-sky-500 text-white text-sm px-4 py-2 rounded-xl font-medium"><i class="fa-solid fa-plus"></i> 新增人物 / Add</button>
+                    </form>
+                    <p x-show="memberMsg" class="text-xs text-rose-700" x-text="memberMsg"></p>
+                    <div class="flex flex-wrap gap-2">
+                        <template x-for="m in members" :key="m.name">
+                            <span class="inline-flex items-center gap-2 pl-3 pr-1 py-1 rounded-xl text-xs font-semibold" :style="`background:${mColor(m.name).soft};color:${mColor(m.name).ink}`">
+                                <span x-text="m.name"></span>
+                                <span class="text-[11px] font-normal" x-text="memberStats(m.name).total + ' 項'"></span>
+                                <input type="email" x-model="m.email" @change="saveMembers()" placeholder="登入 email" title="這位同事登入打卡系統用的 email；填了之後他登入只看得到自己的任務" class="text-xs font-normal px-2 py-1 rounded-lg border border-white/80 bg-white/70 w-44" style="min-height:32px">
+                                <button type="button" @click="removeMember(m.name)" class="p-1.5 rounded-lg hover:bg-white/60" :title="'移除 ' + m.name"><i class="fa-solid fa-xmark"></i></button>
+                            </span>
+                        </template>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200">
+                        <span class="text-xs font-bold text-slate-600"><i class="fa-solid fa-language"></i> 自動翻譯（中↔英）通關密碼</span>
+                        <input type="password" x-model="trPass" @change="saveTrPass()" placeholder="和傾倒 App 一樣的通關密碼" class="text-xs px-2 py-1 rounded-lg border border-slate-300 bg-white w-56" style="min-height:32px">
+                        <button type="button" @click="syncTranslations(true)" class="text-xs bg-white border border-slate-300 px-3 py-1 rounded-lg" style="min-height:32px">現在同步翻譯</button>
+                    </div>
+                    <details class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <summary class="text-xs font-bold text-slate-700 cursor-pointer"><i class="fa-solid fa-lock"></i> 資料庫權限規則（真正鎖住：同事只能讀寫自己的任務）</summary>
+                        <p class="text-xs text-slate-600 mt-2">Firebase 主控台 → office-checkin → Firestore Database → 規則：把原本 <code>match /taskTracker/{docId} { … }</code> 整段換成下面這段，按「發布」。</p>
+                        <pre class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] overflow-x-auto mt-2" x-text="tasksRule"></pre>
+                        <button type="button" @click="navigator.clipboard && navigator.clipboard.writeText(tasksRule)" class="text-xs bg-white border border-slate-300 px-3 py-1 rounded-lg mt-2" style="min-height:32px"><i class="fa-regular fa-copy"></i> 複製規則</button>
+                        <p class="text-xs text-rose-700 mt-2">如果規則裡有「所有登入者都能讀寫全部資料」的總開關（<code>match /{document=**}</code> 搭配 <code>request.auth != null</code>），一定要拿掉，否則同事還是讀得到全部。</p>
+                    </details>
+                    <p class="text-xs text-slate-500">每位同事填上登入 email 後，他登入只看得到自己的任務，畫面是英文。通關密碼只存在這台瀏覽器。</p>
+                    <p class="text-xs text-slate-500">新增後每個人會有自己的區塊，區塊寬度自動平均分配（電腦上一排最多 3 個）。還有任務的人不能移除，請先把任務改給別人或刪掉。</p>
+                </div>
+
+                <!-- Bottom Row: Specific 4 Status Category Pills & Search Field -->
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-3">
+                    <!-- 4 Core Status Filters -->
+                    <div class="flex items-center space-x-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0 text-xs">
+                        <span class="text-slate-400 font-medium mr-1 whitespace-nowrap">狀態 / Status:</span>
+                        
+                        <button @click="selectedStatus = 'All'" 
+                                :class="selectedStatus === 'All' ? 'bg-slate-700 text-white font-bold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" 
+                                class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap">
+                            全部 / All
+                        </button>
+
+                        <!-- 1. Not Started -->
+                        <button @click="selectedStatus = 'Not Started'" 
+                                :class="selectedStatus === 'Not Started' ? 'bg-slate-600 text-white font-bold' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'" 
+                                class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-slate-400"></span>
+                            尚未開始 / Not Started
+                        </button>
+
+                        <!-- 2. In Progress -->
+                        <button @click="selectedStatus = 'In Progress'" 
+                                :class="selectedStatus === 'In Progress' ? 'bg-sky-600 text-white font-bold' : 'bg-sky-50 text-sky-800 hover:bg-sky-100'" 
+                                class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-sky-500"></span>
+                            進行中 / In Progress
+                        </button>
+
+                        <!-- 3. Awaiting / Pending -->
+                        <button @click="selectedStatus = 'Pending'" 
+                                :class="selectedStatus === 'Pending' ? 'bg-amber-600 text-white font-bold' : 'bg-amber-50 text-amber-800 hover:bg-amber-100'" 
+                                class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                            等待中 / Awaiting
+                        </button>
+
+                        <!-- 4. Completed / Closed -->
+                        <button @click="selectedStatus = 'Completed'" 
+                                :class="selectedStatus === 'Completed' ? 'bg-emerald-600 text-white font-bold' : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'" 
+                                class="px-2.5 py-1.5 rounded-lg transition whitespace-nowrap flex items-center gap-1">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            已結案 / Closed
+                        </button>
+                    </div>
+
+                    <!-- Search Input -->
+                    <div class="relative w-full sm:w-64">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                        <input type="text" x-model="searchQuery" placeholder="搜尋專案、公司或對接窗口..." class="w-full text-xs pl-8 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white transition">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Print View Header -->
+            <div class="hidden print-only mb-6 border-b pb-4">
+                <h1 class="text-2xl font-bold text-slate-900">工作進度與任務交接追蹤表 (Task Handover & Progress Tracker)</h1>
+                <p class="text-sm text-slate-600 mt-1">
+                    列印日期 / Date: <span x-text="new Date().toLocaleDateString()"></span> | 
+                    檢視頁籤 / View: <span x-text="viewMode"></span> | 
+                    成員 / Member: <span x-text="selectedMember"></span>
+                </p>
+            </div>
+
+            <!-- Task List View -->
+            <div class="space-y-4">
+                <!-- Two Staff Blocks, each sorted by deadline -->
+                <div class="eqgrid gap-6 items-start" :style="`--cols:${Math.min(groupedTasks.length, 3)}`">
+                <template x-for="group in groupedTasks" :key="group.member">
+                <section class="rounded-2xl border p-4 space-y-4 min-w-0 member-block"
+                         :style="`border-color:${mColor(group.member).line}`">
+                    <div class="flex items-center justify-between px-1">
+                        <h2 class="text-base font-bold flex items-center gap-2"
+                            :style="`color:${mColor(group.member).ink}`">
+                            <i class="fa-solid fa-user"></i> <span x-text="group.member"></span>
+                        </h2>
+                        <span class="text-xs font-semibold text-slate-500">
+                            <span x-text="group.tasks.length"></span> 項 / tasks ·
+                            <button type="button" class="no-print underline decoration-dotted hover:text-slate-700" @click="toggleSort()"
+                                    x-text="sortMode === 'stars' ? '依重要性排序 / By importance ★' : '依到期日排序 / By deadline'" title="切換排序 / Switch sorting"></button>
+                        </span>
+                    </div>
+                    <p x-show="group.tasks.length === 0" class="text-center text-sm text-slate-400 py-6">無符合條件的任務 / No tasks</p>
+                <template x-for="item in group.items" :key="item.key">
+                <div :data-due-key="item.key">
+                <!-- ===== 大項（同一件事、多個對象）===== -->
+                <template x-for="grp in (item.type === 'group' ? [item] : [])" :key="grp.key">
+                    <div class="bg-white rounded-2xl border shadow-xs hover:shadow-md transition-all duration-200 overflow-hidden card-shadow"
+                         :class="grp.allDone ? 'border-emerald-200' : 'border-slate-200'">
+                        <!-- 大項標題列：點擊展開 / 收合 -->
+                        <div class="p-5 space-y-3 cursor-pointer select-none" @click="toggleGroup(grp.key)">
+                            <div class="flex items-start gap-3.5">
+                                <!-- 完成度指示（全部小項打勾才會變綠） -->
+                                <div class="mt-1 flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center"
+                                     :class="grp.allDone ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent'"
+                                     title="全部對象完成後自動打勾 / Checks itself when every item is done">
+                                    <i class="fa-solid fa-check text-xs"></i>
+                                </div>
+                                <div class="flex-1 min-w-0 space-y-1.5">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold"
+                                              :style="badgeStyle(grp.assignee)">
+                                            <i class="fa-solid fa-user text-[10px] mr-1"></i> <span x-text="grp.assignee"></span>
+                                        </span>
+                                        <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-xs font-bold"
+                                              :class="grp.allDone ? 'bg-emerald-100 text-emerald-800' : 'bg-sky-100 text-sky-800'">
+                                            <i class="fa-solid fa-layer-group text-[10px]"></i>
+                                            <span x-text="`${grp.done}/${grp.total} 完成 / done`"></span>
+                                        </span>
+                                        <span class="stars " @click.stop title="重要性 / Importance（再點同一顆可清除）">
+                                            <template x-for="n in 5" :key="n">
+                                                <button type="button" class="star-btn" :class="n <= (grp.stars || 0) ? 'on' : ''" @click.stop="setGroupStars(grp, n)" :aria-label="n + ' 顆星'">★</button>
+                                            </template>
+                                        </span>
+                                    </div>
+                                    <h3 class="text-base font-bold text-slate-800" :class="{'line-through text-slate-400': grp.allDone}" x-text="grp.title"></h3>
+                                    <!-- 進度條 -->
+                                    <div class="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                        <div class="h-full rounded-full transition-all duration-300"
+                                             :class="grp.allDone ? 'bg-emerald-500' : 'bg-sky-500'"
+                                             :style="`width:${Math.round(grp.done / grp.total * 100)}%`"></div>
+                                    </div>
+                                    <div x-show="grp.lastDone" class="text-xs font-medium" style="color:#24605f">
+                                        <i class="fa-regular fa-circle-check"></i> <span x-text="grp.lastDone"></span>
+                                    </div>
+                                </div>
+                                <i class="fa-solid mt-1.5 text-slate-400 no-print" :class="expandedGroups.includes(grp.key) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                            </div>
+
+                            <div class="flex flex-wrap items-center gap-3 text-xs border-t pt-3 border-slate-100">
+                                <div class="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 min-w-[130px]">
+                                    <div class="text-slate-400 font-medium text-[10px] uppercase">中途檢查點 / Checkpoint</div>
+                                    <div class="font-semibold text-sky-700 flex items-center gap-1 mt-0.5">
+                                        <i class="fa-regular fa-calendar-check text-sky-600"></i>
+                                        <span x-text="(grp.checkpoint || L('未設定', 'N/A')) + (grp.sameDates ? '' : L(' 起', ' (earliest)'))"></span>
+                                    </div>
+                                </div>
+                                <div class="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 min-w-[130px]">
+                                    <div class="text-slate-400 font-medium text-[10px] uppercase">預計完成日 / Deadline</div>
+                                    <div class="font-semibold text-rose-600 flex items-center gap-1 mt-0.5">
+                                        <i class="fa-regular fa-clock"></i>
+                                        <span x-text="(grp.deadline || L('未設定', 'N/A')) + (grp.sameDates ? '' : L(' 起', ' (earliest)'))"></span>
+                                    </div>
+                                </div>
+                                <button @click.stop="openGroupEdit(grp)" class="no-print ml-auto inline-flex items-center gap-1 px-2.5 py-1.5 text-slate-500 hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition" title="一次修改整組的名稱、日期、負責人 / Edit the whole group">
+                                    <i class="fa-solid fa-pen-to-square"></i> <span x-text="L('編輯大項', 'Edit group')"></span>
+                                </button>
+                                <button @click.stop="addToGroup(grp)" class="no-print inline-flex items-center gap-1 px-2.5 py-1.5 text-slate-500 hover:text-sky-700 hover:bg-sky-50 rounded-lg transition" title="在這個大項新增對象 / Add an item to this group">
+                                    <i class="fa-solid fa-plus"></i> <span x-text="L('新增對象', 'Add item')"></span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 小項：每個對象各自打勾 -->
+                        <div x-show="expandedGroups.includes(grp.key) || isPrintMode" class="border-t border-slate-100 bg-slate-50/60 divide-y divide-slate-100">
+                            <template x-for="sub in grp.tasks" :key="sub.id">
+                                <div>
+                                    <div class="px-5 py-3.5 flex items-start gap-3">
+                                        <button @click="toggleStatus(sub, $event)"
+                                                class="mt-0.5 flex-shrink-0 w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200"
+                                                :class="sub.status === 'Completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'bg-white border-slate-300 hover:border-sky-500 text-transparent'"
+                                                :title="sub.status === 'Completed' ? '標示為未完成 / Re-open' : '標示為已完成 / Mark as done'">
+                                            <i class="fa-solid fa-check text-[10px]"></i>
+                                        </button>
+                                        <div class="flex-1 min-w-0 space-y-1">
+                                            <div class="flex flex-wrap items-center gap-2">
+                                                <span class="text-sm font-semibold text-slate-800" :class="{'line-through text-slate-400': sub.status === 'Completed'}"
+                                                      x-text="sub.company || '（未填公司 / No company）'"></span>
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold" :class="getStatusBadgeClass(sub.status)">
+                                                    <span x-text="getStatusLabel(sub.status)"></span>
+                                                </span>
+                                            </div>
+                                            <div class="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-slate-600">
+                                                <div class="flex items-center gap-1" x-show="sub.contact">
+                                                    <i class="fa-solid fa-id-card text-slate-400"></i><span x-text="sub.contact"></span>
+                                                </div>
+                                                <div class="flex items-center gap-1 text-slate-500" x-show="sub.phone">
+                                                    <i class="fa-solid fa-phone text-slate-400"></i><span x-text="sub.phone"></span>
+                                                </div>
+                                                <div class="flex items-center gap-1 text-rose-600" x-show="!grp.sameDates && (dateText(sub, 'checkpoint') || dateText(sub, 'deadline'))">
+                                                    <i class="fa-regular fa-clock"></i><span x-text="[dateText(sub, 'checkpoint'), dateText(sub, 'deadline')].filter(Boolean).join(' → ')"></span>
+                                                </div>
+                                            </div>
+                                            <div x-show="sub.status === 'Completed'" class="flex items-center gap-1 text-xs font-medium" style="color:#24605f"><i class="fa-regular fa-circle-check"></i><span x-text="doneLabel(sub)"></span></div>
+                                        </div>
+                                        <div class="flex items-center gap-0.5 no-print">
+                                            <button @click="toggleExpand(sub.id)" class="p-1.5 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition" title="展開細節 / Details">
+                                                <i class="fa-solid text-xs" :class="expandedTasks.includes(sub.id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                            </button>
+                                            <button @click="openModal(sub)" class="p-1.5 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="編輯 / Edit">
+                                                <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                            </button>
+                                            <button @click="deleteTask(sub.id)" class="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="刪除 / Delete">
+                                                <i class="fa-solid fa-trash-can text-xs"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <!-- 小項細節 -->
+                                    <div x-show="expandedTasks.includes(sub.id) || isPrintMode" class="px-5 pb-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm" style="padding-left:3.25rem">
+                                        <div class="bg-white p-3 rounded-xl border border-slate-200/80">
+                                            <div class="text-[11px] font-bold text-slate-600 mb-1">目前進度 / Status</div>
+                                            <p class="text-slate-700 whitespace-pre-line" x-text="tx(sub, 'currentStatus') || '—'"></p>
+                                        </div>
+                                        <div class="bg-white p-3 rounded-xl border border-slate-200/80">
+                                            <div class="text-[11px] font-bold text-emerald-800 mb-1">下一步 / Next steps</div>
+                                            <p class="text-slate-700 whitespace-pre-line" x-text="tx(sub, 'proposedSolution') || '—'"></p>
+                                        </div>
+                                        <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-200/80">
+                                            <div class="text-[11px] font-bold text-amber-900 mb-1">備註 / Notes</div>
+                                            <p class="text-slate-700 whitespace-pre-line" x-text="tx(sub, 'managerNotes') || '—'"></p>
+                                        </div>
+                                        <div x-show="(sub.log || []).length" class="bg-white p-3 rounded-xl border border-slate-200/80 md:col-span-3">
+                                            <div class="text-[11px] font-bold text-slate-600 mb-1"><i class="fa-solid fa-clock-rotate-left"></i> <span x-text="L('進度紀錄（最新在上）', 'Progress history (newest first)')"></span></div>
+                                            <template x-for="(e, i) in [...(sub.log || [])].reverse().slice(0, 8)" :key="i">
+                                                <div class="text-xs text-slate-600 py-0.5"><span class="text-slate-400" x-text="fmtTime(e.at) + (e.by ? ' · ' + e.by : '')"></span> <span class="font-semibold" x-show="e.status" x-text="getStatusLabel(e.status)"></span> <span x-text="e.text || ''"></span></div>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+
+                <!-- ===== 單一任務（原本的卡片）===== -->
+                <template x-for="task in (item.type === 'single' ? [item.task] : [])" :key="task.id">
+                    <div class="bg-white rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all duration-200 overflow-hidden card-shadow">
+                        <!-- Main Card Item Header -->
+                        <div class="p-5 flex flex-col justify-between gap-4">
+                            <!-- Left: Status Badge & Main Task Info -->
+                            <div class="flex items-start gap-3.5 flex-1">
+                                <!-- Status Toggle Button -->
+                                <button @click="toggleStatus(task, $event)" 
+                                        class="mt-1 flex-shrink-0 w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200"
+                                        :class="task.status === 'Completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 hover:border-sky-500 text-transparent'"
+                                        :title="task.status === 'Completed' ? '標示為未完成 / Re-open' : '標示為已結案 / Mark as Closed'">
+                                    <i class="fa-solid fa-check text-xs"></i>
+                                </button>
+
+                                <div class="space-y-1.5 flex-1">
+                                    <div class="flex flex-wrap items-center gap-2">
+                                        <!-- Assignee Badge -->
+                                        <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-bold"
+                                              :style="badgeStyle(task.assignee)">
+                                            <i class="fa-solid fa-user text-[10px] mr-1"></i> <span x-text="task.assignee"></span>
+                                        </span>
+
+                                        <!-- 4 Core Category Badge -->
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-bold"
+                                              :class="getStatusBadgeClass(task.status)">
+                                            <span x-text="getStatusLabel(task.status)"></span>
+                                        </span>
+
+                                        <!-- Task / Project Title -->
+                                        <h3 class="text-base font-bold text-slate-800" :class="{'line-through text-slate-400': task.status === 'Completed'}" x-text="tx(task, 'title')"></h3>
+                                        <span class="stars " @click.stop title="重要性 / Importance（再點同一顆可清除）">
+                                            <template x-for="n in 5" :key="n">
+                                                <button type="button" class="star-btn" :class="n <= (task.stars || 0) ? 'on' : ''" @click.stop="setStars(task, n)" :aria-label="n + ' 顆星'">★</button>
+                                            </template>
+                                        </span>
+                                    </div>
+
+                                    <!-- Company & Contact Quick Info -->
+                                    <div class="flex flex-wrap items-center gap-y-1 gap-x-4 text-xs text-slate-600">
+                                        <div class="flex items-center gap-1 font-medium text-slate-700" x-show="task.company">
+                                            <i class="fa-solid fa-building text-slate-400"></i>
+                                            <span x-text="task.company"></span>
+                                        </div>
+                                        <div class="flex items-center gap-1" x-show="task.contact">
+                                            <i class="fa-solid fa-id-card text-slate-400"></i>
+                                            <span x-text="task.contact"></span>
+                                        </div>
+                                        <div class="flex items-center gap-1 text-slate-500" x-show="task.phone">
+                                            <i class="fa-solid fa-phone text-slate-400"></i>
+                                            <span x-text="task.phone"></span>
+                                        </div>
+                                    </div>
+                                    <div x-show="task.status === 'Completed'" class="flex items-center gap-1 text-xs font-medium" style="color:#24605f"><i class="fa-regular fa-circle-check"></i><span x-text="doneLabel(task)"></span></div>
+                                </div>
+                            </div>
+
+                            <!-- Right: Key Dates & Quick Action Controls -->
+                            <div class="flex flex-wrap items-center gap-3 text-xs border-t pt-3 border-slate-100">
+                                <!-- Mid-term Checkpoint -->
+                                <div class="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 min-w-[130px]">
+                                    <div class="text-slate-400 font-medium text-[10px] uppercase">中途檢查點 / Checkpoint</div>
+                                    <div class="font-semibold text-sky-700 flex items-center gap-1 mt-0.5">
+                                        <i class="fa-regular fa-calendar-check text-sky-600"></i>
+                                        <span x-text="dateText(task, 'checkpoint') || L('未設定', 'N/A')"></span>
+                                    </div>
+                                </div>
+
+                                <!-- Target Deadline -->
+                                <div class="bg-slate-50 px-3 py-2 rounded-xl border border-slate-100 min-w-[130px]">
+                                    <div class="text-slate-400 font-medium text-[10px] uppercase">預計完成日 / Deadline</div>
+                                    <div class="font-semibold text-rose-600 flex items-center gap-1 mt-0.5">
+                                        <i class="fa-regular fa-clock"></i>
+                                        <span x-text="dateText(task, 'deadline') || L('未設定', 'N/A')"></span>
+                                    </div>
+                                </div>
+
+                                <!-- Card Action Buttons -->
+                                <div class="flex items-center gap-1 no-print ml-auto">
+                                    <button @click="toggleExpand(task.id)" class="p-2 text-slate-500 hover:text-sky-600 hover:bg-sky-50 rounded-lg transition" title="展開細節 / Toggle Details">
+                                        <i class="fa-solid" :class="expandedTasks.includes(task.id) ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                                    </button>
+                                    <button @click="openModal(task)" class="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition" title="編輯任務 / Edit Task">
+                                        <i class="fa-solid fa-pen-to-square"></i>
+                                    </button>
+                                    <button @click="deleteTask(task.id)" class="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition" title="刪除 / Delete">
+                                        <i class="fa-solid fa-trash-can"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Expandable Detail Drawer & Remarks Section -->
+                        <div x-show="expandedTasks.includes(task.id) || isPrintMode" x-collapse class="bg-slate-50/80 border-t border-slate-100 p-5 space-y-4">
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <!-- Current Status Description -->
+                                <div class="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs">
+                                    <div class="text-xs font-bold text-slate-600 mb-1 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-spinner text-sky-500"></i> 目前進度狀態 / Current Status Description
+                                    </div>
+                                    <p class="text-sm text-slate-700 whitespace-pre-line" x-text="tx(task, 'currentStatus') || '無目前進度描述 / No status description'"></p>
+                                </div>
+
+                                <!-- Action Plan / Next Steps -->
+                                <div class="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-xs">
+                                    <div class="text-xs font-bold text-emerald-800 mb-1 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-person-walking-arrow-right text-emerald-600"></i> 下一步執行計畫 / Action Plan & Next Steps
+                                    </div>
+                                    <p class="text-sm text-slate-700 whitespace-pre-line" x-text="tx(task, 'proposedSolution') || '尚無下一步說明 / No action plan specified'"></p>
+                                </div>
+                            </div>
+
+                            <!-- Remarks & Manager Notes (Editable Directly or Viewable) -->
+                            <div class="bg-amber-50/60 p-4 rounded-xl border border-amber-200/80">
+                                <div class="flex items-center justify-between mb-2">
+                                    <span class="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-note-sticky text-amber-600"></i> 補充說明與備註 / Remarks & Notes
+                                    </span>
+                                    <button @click="openModal(task)" class="text-xs text-amber-700 hover:text-amber-900 font-medium underline no-print">
+                                        編輯備註 / Edit Notes
+                                    </button>
+                                </div>
+                                <p class="text-sm text-slate-700 whitespace-pre-line" x-text="tx(task, 'managerNotes') || '無補充說明。 / No additional notes provided.'"></p>
+                            </div>
+                            <div x-show="(task.log || []).length" class="bg-white p-3 rounded-xl border border-slate-200/80">
+                                <div class="text-[11px] font-bold text-slate-600 mb-1"><i class="fa-solid fa-clock-rotate-left"></i> <span x-text="L('進度紀錄（最新在上）', 'Progress history (newest first)')"></span></div>
+                                <template x-for="(e, i) in [...(task.log || [])].reverse().slice(0, 8)" :key="i">
+                                    <div class="text-xs text-slate-600 py-0.5"><span class="text-slate-400" x-text="fmtTime(e.at) + (e.by ? ' · ' + e.by : '')"></span> <span class="font-semibold" x-show="e.status" x-text="getStatusLabel(e.status)"></span> <span x-text="e.text || ''"></span></div>
+                                </template>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+                </div>
+                </template>
+                </section>
+                </template>
+                </div>
+
+                <!-- Empty Search / Filter State -->
+                <div x-show="groupedTasks.every(g => g.tasks.length === 0)" class="text-center py-12 bg-white rounded-2xl border border-slate-200 no-print">
+                    <i class="fa-solid fa-folder-open text-4xl text-slate-300 mb-3"></i>
+                    <p class="text-slate-500 font-medium">沒有找到符合條件的任務項目 / No tasks found</p>
+                    <button @click="viewMode = 'All'; selectedMember = 'All'; selectedStatus = 'All'; searchQuery = ''" class="mt-2 text-sky-600 text-xs font-semibold hover:underline">清除所有篩選條件 / Clear All Filters</button>
+                </div>
+            </div>
+            </div><!-- /page tasks -->
+        </main>
+
+        <!-- Edit / Create Task Modal -->
+        <div x-show="isModalOpen" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
+                <div @click="isModalOpen = false" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity"></div>
+
+                <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+                <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+                        <h3 class="text-base sm:text-lg font-bold" x-text="form.id ? '編輯工作項目 / Edit Task' : '新增工作項目 / Add Task'"></h3>
+                        <button @click="isModalOpen = false" class="text-slate-400 hover:text-white transition">
+                            <i class="fa-solid fa-xmark text-xl"></i>
+                        </button>
+                    </div>
+
+                    <form @submit.prevent="saveTask" class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <!-- Assignee -->
+                            <div x-show="!asStaff">
+                                <label class="block text-xs font-bold text-slate-700 mb-1">負責同仁 / Staff Assignee *</label>
+                                <select x-model="form.assignee" required class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                                    <template x-for="m in memberNames" :key="m"><option :value="m" x-text="m"></option></template>
+                                </select>
+                            </div>
+
+                            <!-- 4 Core Status Categories -->
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">任務狀態分類 / Status Category *</label>
+                                <select x-model="form.status" required class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                                    <option value="Not Started">尚未開始 / Not Started</option>
+                                    <option value="In Progress">進行中 / In Progress</option>
+                                    <option value="Pending">等待中、卡關中 / Awaiting or Pending</option>
+                                    <option value="Completed">已結案、已完成 / Completed or Closed</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- Task Title -->
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">任務 / 專案名稱 (Task / Project Title) *</label>
+                            <input type="text" x-model="form.title" x-show="!asStaff" :required="!asStaff" placeholder="例如: Buyer Reimbursement TAITRONICS" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            <input type="text" x-model="form.titleEn" x-show="asStaff" :required="asStaff" placeholder="e.g. Buyer Reimbursement TAITRONICS" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        </div>
+
+                        <!-- 重要性 -->
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">重要性 / Importance <span class="font-normal text-slate-400">（再點同一顆可清除 / tap again to clear）</span></label>
+                            <span class="stars stars-lg">
+                                <template x-for="n in 5" :key="n">
+                                    <button type="button" class="star-btn" :class="n <= (form.stars || 0) ? 'on' : ''" @click="form.stars = (form.stars || 0) === n ? 0 : n" :aria-label="n + ' 顆星'">★</button>
+                                </template>
+                            </span>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <!-- Company -->
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">公司名稱 / Company</label>
+                                <input type="text" x-model="form.company" placeholder="例如: KIRPART OTOMOTIV" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            </div>
+
+                            <!-- Contact -->
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">對接窗口與 Email / Contact</label>
+                                <input type="text" x-model="form.contact" placeholder="姓名 / Email" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            </div>
+
+                            <!-- Phone -->
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">電話 / Phone</label>
+                                <input type="text" x-model="form.phone" placeholder="電話號碼" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <!-- Mid-term Checkpoint -->
+                            <div>
+                                <label class="block text-xs font-bold text-sky-700 mb-1">中途檢查點 / Checkpoint Date</label>
+                                <input type="date" x-model="form.checkpointDate" class="w-full text-sm p-2.5 bg-sky-50/50 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none mb-1.5">
+                                <input type="text" x-model="form.checkpoint" :placeholder="L('備註（選填），例如：15:00 確認初步報價', 'Note (optional), e.g. 15:00 confirm quote')" class="w-full text-sm p-2 bg-white border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            </div>
+
+                            <!-- Deadline -->
+                            <div>
+                                <label class="block text-xs font-bold text-rose-700 mb-1">預計完成日 / Target Deadline</label>
+                                <input type="date" x-model="form.deadlineDate" class="w-full text-sm p-2.5 bg-rose-50/50 border border-rose-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none mb-1.5">
+                                <input type="text" x-model="form.deadline" :placeholder="L('備註（選填），例如：下班前', 'Note (optional), e.g. end of day')" class="w-full text-sm p-2 bg-white border border-rose-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                                <p x-show="!form.deadlineDate" class="text-[11px] text-rose-600 mt-1" x-text="L('沒選日期就不會出現在到期提醒', 'No date picked = no due reminder')"></p>
+                            </div>
+                        </div>
+
+                        <!-- Current Status Details -->
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">目前進度描述 / Current Status Description</label>
+                            <textarea x-show="!asStaff" x-model="form.currentStatus" rows="2" placeholder="說明最新進度，例如：Getting quotation from hospitals / Awaiting bank info..." class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"></textarea>
+                            <textarea x-show="asStaff" x-model="form.currentStatusEn" rows="2" placeholder="Latest progress, e.g. Waiting for bank info" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"></textarea>
+                        </div>
+
+                        <!-- Action Plan / Next Steps -->
+                        <div>
+                            <label class="block text-xs font-bold text-emerald-800 mb-1">下一步執行計畫 / Action Plan & Next Steps</label>
+                            <textarea x-show="!asStaff" x-model="form.proposedSolution" rows="2" placeholder="應對策略或接下來的推動步驟..." class="w-full text-sm p-2.5 bg-emerald-50/40 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"></textarea>
+                            <textarea x-show="asStaff" x-model="form.proposedSolutionEn" rows="2" placeholder="Next steps" class="w-full text-sm p-2.5 bg-emerald-50/40 border border-emerald-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"></textarea>
+                        </div>
+
+                        <!-- Manager Remarks / Notes -->
+                        <div>
+                            <label class="block text-xs font-bold text-amber-900 mb-1">補充說明與備註 / Remarks & Notes</label>
+                            <textarea x-show="!asStaff" x-model="form.managerNotes" rows="2" placeholder="填寫補充說明、驗收標準或交接注意事項..." class="w-full text-sm p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"></textarea>
+                            <textarea x-show="asStaff" x-model="form.managerNotesEn" rows="2" placeholder="Notes" class="w-full text-sm p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none"></textarea>
+                        </div>
+
+                        <details x-show="!asStaff" class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                            <summary class="text-xs font-bold text-slate-700 cursor-pointer"><i class="fa-solid fa-language"></i> 英文版（同事看到的）· 存檔後自動翻譯，也可以自己改</summary>
+                            <div class="space-y-2 pt-2">
+                                <input type="text" x-model="form.titleEn" placeholder="Title in English（留白會自動翻）" class="w-full text-sm p-2 bg-white border border-slate-300 rounded-xl">
+                                <textarea x-model="form.currentStatusEn" rows="2" placeholder="Current status" class="w-full text-sm p-2 bg-white border border-slate-300 rounded-xl"></textarea>
+                                <textarea x-model="form.proposedSolutionEn" rows="2" placeholder="Next steps" class="w-full text-sm p-2 bg-white border border-slate-300 rounded-xl"></textarea>
+                                <textarea x-model="form.managerNotesEn" rows="2" placeholder="Notes" class="w-full text-sm p-2 bg-white border border-slate-300 rounded-xl"></textarea>
+                                <p class="text-[11px] text-slate-500">中文改了、英文沒動 → 自動重翻英文；兩邊都改了 → 保留你寫的。同事改了英文 → 你打開頁面時自動翻回中文。</p>
+                            </div>
+                        </details>
+
+                        <div class="flex justify-end space-x-3 pt-3 border-t">
+                            <button type="button" @click="isModalOpen = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition">取消 / Cancel</button>
+                            <button type="submit" class="px-5 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl shadow-xs transition">儲存任務 / Save Task</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 垃圾桶：刪掉的任務可以還原 ===== -->
+        <div x-show="trashModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" role="dialog" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div @click="trashModal = false" class="fixed inset-0 bg-slate-900/60"></div>
+                <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-xl w-full max-w-xl">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+                        <h3 class="text-base font-bold">垃圾桶（已刪除的任務）</h3>
+                        <button @click="trashModal = false" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <div class="p-5 space-y-2 max-h-[70vh] overflow-y-auto">
+                        <p x-show="!trashTasks.length" class="text-sm text-slate-400 text-center py-6">垃圾桶是空的</p>
+                        <template x-for="t in trashTasks" :key="t.id">
+                            <div class="flex items-center gap-3 border border-slate-200 rounded-xl px-3 py-2">
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-semibold text-slate-800 truncate" x-text="tx(t, 'title') + (t.company ? '（' + t.company + '）' : '')"></div>
+                                    <div class="text-[11px] text-slate-500" x-text="t.assignee + ' · 刪除於 ' + fmtTime(t.deletedAt) + (t.deletedBy ? '（' + t.deletedBy + '）' : '')"></div>
+                                </div>
+                                <button type="button" @click="restoreTask(t)" class="text-xs bg-white border border-slate-300 px-3 py-1.5 rounded-lg hover:border-sky-500"><i class="fa-solid fa-rotate-left"></i> 還原</button>
+                                <button type="button" @click="purgeTask(t)" class="text-xs text-rose-600 px-2 py-1.5 rounded-lg hover:bg-rose-50" title="永久刪除，無法復原"><i class="fa-solid fa-xmark"></i></button>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 編輯大項 Modal：一次改整組 ===== -->
+        <div x-show="groupModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" role="dialog" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div @click="groupModal = false" class="fixed inset-0 bg-slate-900/60"></div>
+                <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-xl w-full max-w-xl">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+                        <h3 class="text-base font-bold" x-text="L('編輯大項（套用到這組 ' + gEdit.count + ' 筆）', 'Edit group (applies to all ' + gEdit.count + ' items)')"></h3>
+                        <button @click="groupModal = false" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <form @submit.prevent="saveGroupEdit()" class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div x-show="!asStaff">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">大項名稱（中文）</label>
+                            <input type="text" x-model="gEdit.title" :required="!asStaff" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" x-text="L('大項名稱（英文，同事看到的；留白會自動翻）', 'Group title')"></label>
+                            <input type="text" x-model="gEdit.titleEn" :required="asStaff" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                        </div>
+                        <div x-show="!asStaff">
+                            <label class="block text-xs font-bold text-slate-700 mb-1">負責同仁</label>
+                            <select x-model="gEdit.assignee" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl">
+                                <template x-for="m in memberNames" :key="m"><option :value="m" x-text="m" :selected="m === gEdit.assignee"></option></template>
+                            </select>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-sky-700 mb-1" x-text="L('中途檢查點', 'Checkpoint')"></label>
+                                <input type="date" x-model="gEdit.checkpointDate" class="w-full text-sm p-2.5 bg-sky-50/50 border border-sky-200 rounded-xl mb-1.5">
+                                <input type="text" x-model="gEdit.checkpoint" :placeholder="gEdit.mixedCp ? L('各筆不同，日期和備註都留白＝維持各自的', 'Differs per item — leave both blank to keep') : L('備註（選填）', 'Note (optional)')" class="w-full text-sm p-2.5 bg-sky-50/50 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-rose-700 mb-1" x-text="L('預計完成日', 'Deadline')"></label>
+                                <input type="date" x-model="gEdit.deadlineDate" class="w-full text-sm p-2.5 bg-rose-50/50 border border-rose-200 rounded-xl mb-1.5">
+                                <input type="text" x-model="gEdit.deadline" :placeholder="gEdit.mixedDl ? L('各筆不同，日期和備註都留白＝維持各自的', 'Differs per item — leave both blank to keep') : L('備註（選填）', 'Note (optional)')" class="w-full text-sm p-2.5 bg-rose-50/50 border border-rose-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:outline-none">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" x-text="L('狀態', 'Status')"></label>
+                            <select x-model="gEdit.status" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl">
+                                <option value="">— 不變（維持各筆自己的） / Keep each item's own —</option>
+                                <option value="Not Started">尚未開始 / Not Started</option>
+                                <option value="In Progress">進行中 / In Progress</option>
+                                <option value="Pending">等待中、卡關中 / Awaiting</option>
+                                <option value="Completed">已結案 / Closed</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1" x-text="L('重要性', 'Importance')"></label>
+                            <span class="stars stars-lg">
+                                <template x-for="n in 5" :key="n">
+                                    <button type="button" class="star-btn" :class="n <= (gEdit.stars || 0) ? 'on' : ''" @click="gEdit.stars = (gEdit.stars || 0) === n ? 0 : n" :aria-label="n + ' 顆星'">★</button>
+                                </template>
+                            </span>
+                        </div>
+                        <p class="text-[11px] text-slate-500" x-text="L('公司、窗口、進度描述這些每筆不同的內容，請展開大項後按各筆的筆形圖示修改。', 'To change company, contact or progress of one item, expand the group and use that item\'s pen icon.')"></p>
+                        <div class="flex justify-end space-x-3 pt-3 border-t">
+                            <button type="button" @click="groupModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition" x-text="L('取消', 'Cancel')"></button>
+                            <button type="submit" class="px-5 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl shadow-xs transition" x-text="L('套用到整組', 'Apply to all')"></button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 面談紀錄 Modal ===== -->
+        <div x-show="meetingModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" role="dialog" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div @click="meetingModal = false" class="fixed inset-0 bg-slate-900/60"></div>
+                <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-xl w-full max-w-2xl">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+                        <h3 class="text-base font-bold" x-text="mForm.id ? '編輯面談紀錄' : '新增面談紀錄'"></h3>
+                        <button @click="meetingModal = false" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <form @submit.prevent="saveMeeting()" class="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">對象 *</label>
+                                <select x-model="mForm.person" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"><template x-for="m in memberNames" :key="m"><option :value="m" x-text="m"></option></template></select></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">面談日期 *</label>
+                                <input type="date" x-model="mForm.date" required class="w-full text-sm p-2 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">下次面談</label>
+                                <input type="date" x-model="mForm.nextDate" class="w-full text-sm p-2 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        </div>
+                        <div x-show="lastMeeting(mForm.person, mForm.id)" class="bg-sky-50 border border-sky-100 rounded-xl p-3 text-xs text-slate-700">
+                            <div class="font-bold text-sky-800 mb-1">上次（<span x-text="lastMeeting(mForm.person, mForm.id)?.date"></span>）的約定，這次可以先追：</div>
+                            <template x-for="a in (lastMeeting(mForm.person, mForm.id)?.agreements || [])"><div x-text="(agreementDone(a) ? '✓ ' : '□ ') + a.text"></div></template>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-700 mb-1">談話重點</label>
+                            <textarea x-model="mForm.topics" rows="3" placeholder="這次談了哪些工作、進度、困難" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">對方提出的問題／想法</label>
+                                <textarea x-model="mForm.staffInput" rows="3" placeholder="對方的需求、抱怨、建議" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">我給的回饋</label>
+                                <textarea x-model="mForm.feedback" rows="3" placeholder="肯定的地方、需要改進的地方" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-emerald-800 mb-1">約定事項（一行一件）</label>
+                            <textarea x-model="mForm.agreementsText" rows="3" placeholder="例如：11/5 前把 KIRPART 報帳資料補齊&#10;每週五下午寄進度簡報給我" class="w-full text-sm p-2.5 bg-emerald-50/40 border border-emerald-200 rounded-xl"></textarea></div>
+                        <div><label class="block text-xs font-bold text-amber-900 mb-1"><i class="fa-solid fa-eye-slash"></i> 私下觀察（給自己看的）</label>
+                            <textarea x-model="mForm.privateNotes" rows="2" placeholder="態度、狀態、要留意的事" class="w-full text-sm p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl"></textarea></div>
+                        <div class="flex justify-end gap-3 pt-3 border-t">
+                            <button type="button" @click="meetingModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl">取消</button>
+                            <button type="submit" class="px-5 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl">儲存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 目標 Modal ===== -->
+        <div x-show="goalModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto no-print" role="dialog" aria-modal="true">
+            <div class="flex items-center justify-center min-h-screen p-4">
+                <div @click="goalModal = false" class="fixed inset-0 bg-slate-900/60"></div>
+                <div class="relative bg-white rounded-2xl text-left overflow-hidden shadow-xl w-full max-w-lg">
+                    <div class="bg-slate-900 px-6 py-4 flex items-center justify-between text-white">
+                        <h3 class="text-base font-bold" x-text="gForm.id ? '編輯目標' : '新增目標'"></h3>
+                        <button @click="goalModal = false" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark text-xl"></i></button>
+                    </div>
+                    <form @submit.prevent="saveGoal()" class="p-6 space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">對象 *</label>
+                                <select x-model="gForm.person" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"><template x-for="m in memberNames" :key="m"><option :value="m" x-text="m"></option></template></select></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">期間</label>
+                                <input type="text" x-model="gForm.period" placeholder="例如 2026 Q4" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-700 mb-1">目標 *</label>
+                            <input type="text" x-model="gForm.title" required placeholder="例如：買主報帳案件能獨立完成，不需要我逐筆檢查" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></div>
+                        <div class="grid grid-cols-2 gap-4 items-end">
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">進度 <span x-text="(gForm.progress || 0) + '%'"></span></label>
+                                <input type="range" min="0" max="100" step="10" x-model.number="gForm.progress" class="w-full"></div>
+                            <div><label class="block text-xs font-bold text-slate-700 mb-1">狀態</label>
+                                <select x-model="gForm.status" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"><option>進行中</option><option>達成</option><option>暫停</option></select></div>
+                        </div>
+                        <div><label class="block text-xs font-bold text-slate-700 mb-1">備註</label>
+                            <textarea x-model="gForm.notes" rows="2" placeholder="怎麼衡量、目前卡在哪" class="w-full text-sm p-2.5 bg-slate-50 border border-slate-300 rounded-xl"></textarea></div>
+                        <div class="flex justify-end gap-3 pt-3 border-t">
+                            <button type="button" @click="goalModal = false" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-xl">取消</button>
+                            <button type="submit" class="px-5 py-2 text-sm bg-sky-600 hover:bg-sky-500 text-white font-semibold rounded-xl">儲存</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== 到期提醒：一打開頁面就跳（依預計完成日，3 天內） ===== -->
+        <div x-show="dueModal" x-cloak class="due-mask no-print" role="dialog" aria-modal="true" aria-labelledby="dueTitle" @keydown.escape.window="dueModal = false">
+            <div class="due-box">
+                <div class="due-head">
+                    <i class="fa-regular fa-bell text-lg" style="color:#f3c9ad"></i>
+                    <div class="flex-1">
+                        <div id="dueTitle" class="text-base font-bold" x-text="L('快到期的任務', 'Tasks due soon')"></div>
+                        <div class="sub" x-text="L('依預計完成日 · 今天 ', 'By target deadline · Today ') + todayLabel()"></div>
+                    </div>
+                </div>
+                <div x-show="canRemind && dueRemindList.length" class="px-4 pt-3 flex flex-wrap items-center gap-2">
+                    <span class="text-xs font-bold" style="color:#1f4b4f"><i class="fa-regular fa-envelope"></i> 一次寄信提醒：</span>
+                    <template x-for="r in dueRemindList" :key="r.name">
+                        <a :href="mailtoFor(r.name, r.items)" class="text-xs font-bold px-2.5 py-1 rounded-lg" :style="badgeStyle(r.name)" x-text="r.name + '（' + r.items.length + ' 項）'"></a>
+                    </template>
+                </div>
+                <template x-for="sec in dueSections" :key="sec.cls">
+                    <div :class="sec.cls">
+                        <div class="due-sec"><span class="dot"></span><span x-text="sec.name + ' · ' + sec.items.length"></span></div>
+                        <div class="due-list">
+                            <template x-for="d in sec.items" :key="d.key">
+                                <div class="due-row flex items-stretch">
+                                <button type="button" class="due-item" @click="goToDue(d)">
+                                    <div class="flex flex-wrap items-center gap-1.5 text-xs">
+                                        <span class="px-2 py-0.5 rounded-md font-bold" :style="badgeStyle(d.assignee)" x-text="d.assignee"></span>
+                                        <span x-show="d.stars" style="color:#e0a020" x-text="'★'.repeat(d.stars)"></span>
+                                    </div>
+                                    <div class="t" x-text="d.title + (d.count > 1 ? L('（' + d.count + ' 家）', ' (' + d.count + ')') : '')"></div>
+                                    <div class="d" x-text="L('預計完成日 ', 'Deadline ') + d.dateLabel + ' · ' + d.when"></div>
+                                </button>
+                                <a x-show="canRemind" :href="emailOf(d.assignee) ? mailtoFor(d.assignee, [d]) : null" @click="if (!emailOf(d.assignee)) { $event.preventDefault(); alert(d.assignee + ' 還沒在「人物」填 email，沒辦法寄信提醒'); }"
+                                   class="due-mail" :title="emailOf(d.assignee) ? '寄信提醒 ' + d.assignee : d.assignee + ' 沒有 email'" :aria-label="'寄信提醒 ' + d.assignee"
+                                   :style="emailOf(d.assignee) ? '' : 'opacity:.35'"><i class="fa-regular fa-envelope"></i></a>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+                <div class="due-btns">
+                    <button type="button" class="due-snooze" @click="snoozeDue()" x-text="L('今天不再提醒', 'Not again today')"></button>
+                    <button type="button" class="due-ok" @click="dueModal = false" x-text="L('知道了', 'Got it')"></button>
+                </div>
+                <p class="text-center text-xs pb-4 px-4" style="color:#6b7a78" x-text="L('點任一項會關閉視窗，並捲到那張任務卡', 'Tap a task to jump to it')"></p>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <footer class="bg-white border-t border-slate-200 py-4 mt-auto no-print">
+            <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-500">
+                工作進度與任務交接追蹤系統 &copy; Task Handover & Progress Tracker. All rights reserved. · V3
+            </div>
+        </footer>
+    </div>
+
+    <!-- Alpine App Logic -->
+    <script>
+        function taskApp() {
+            return {
+                viewMode: 'Active', // 'Active', 'Completed', 'All'
+                selectedMember: 'All',
+                selectedStatus: 'All',
+                sortMode: (localStorage.getItem('task_sort_mode') || 'deadline'),
+                dueModal: false,
+                dueChecked: false,
+                previewAs: '',
+                cheer: { show: false, text: '' },
+                _cheerTimer: null,
+                reportPeriod: 'week',
+                // ===== 中英翻譯（只有管理者的頁面會呼叫翻譯；同事看英文欄位） =====
+                WORKER: 'https://aged-sea-8f8f.shianglingtzeng.workers.dev',
+                TR_FIELDS: ['title', 'currentStatus', 'proposedSolution', 'managerNotes'],
+                trPass: (function () { try { return localStorage.getItem('task_tr_pass') || ''; } catch (e) { return ''; } })(),
+                trMsg: '',
+                trError: false,
+                _trBusy: false,
+                _trTimer: null,
+                _trFailAt: 0,
+                allTasks: [],
+                searchQuery: '',
+                expandedTasks: [],
+                expandedGroups: [],
+                isModalOpen: false,
+                isPrintMode: false,
+                form: {
+                    id: null,
+                    assignee: 'Donus',
+                    title: '',
+                    company: '',
+                    contact: '',
+                    phone: '',
+                    status: 'In Progress',
+                    checkpoint: '',
+                    deadline: '',
+                    currentStatus: '',
+                    proposedSolution: '',
+                    managerNotes: ''
+                },
+                tasks: [],
+
+                // 雲端 / 登入狀態
+                authState: 'loading', // 'loading' | 'out' | 'in'
+                userEmail: '',
+                loginEmail: '',
+                loginPw: '',
+                loginError: '',
+                loginBusy: false,
+                syncError: '',
+                _unsub: null,
+
+                // Pre-populated data directly from employee documents
+                defaultTasks: [],   // 不再把客戶資料寫在公開的原始碼裡
+
+                // ===== 一對一面談（只有管理者帳號看得到；資料在 oneOnOne 集合，靠 Firestore 規則鎖住） =====
+                // 超級管理員：看全部任務、管理人物、翻譯；一對一面談只有 OOO_EMAIL 看得到
+                MANAGER_EMAILS: ['evatzeng@taitra.org.tw', 'tasha@taitra.org.tw'],
+                OOO_EMAIL: 'evatzeng@taitra.org.tw',
+                previewOpen: false,
+                page: 'tasks',
+                oneOnOnes: [],
+                oooError: '',
+                oooPerson: 'Donus',
+                // ===== 人物（成員）：存在 taskTracker/_members；新增後畫面自動分區、平均寬度 =====
+                members: [{ name: 'Donus', c: 0 }, { name: 'Osman', c: 1 }],
+                memberPanel: false,
+                newMemberName: '',
+                memberMsg: '',
+                PALETTE: [
+                    { main: '#6f8f5e', soft: '#e5eedf', ink: '#3f5634', line: '#c9dbbf' },  // 鼠尾草綠
+                    { main: '#c08a2e', soft: '#f8ecd5', ink: '#7a5410', line: '#ecd3a6' },  // 芥末黃
+                    { main: '#5f7d8c', soft: '#e2ebef', ink: '#3a5361', line: '#c3d3db' },  // 霧藍
+                    { main: '#4f8a7e', soft: '#dfeeea', ink: '#2c5a51', line: '#bcdad2' },  // 灰綠
+                    { main: '#8a6a4a', soft: '#efe5da', ink: '#5a4129', line: '#dcc8b3' },  // 栗棕
+                    { main: '#7b8f3c', soft: '#eef1d9', ink: '#4c5a20', line: '#d6deae' },  // 橄欖
+                    { main: '#6a7b8c', soft: '#e6eaee', ink: '#404d5a', line: '#cbd3db' },  // 石板
+                    { main: '#b07a4f', soft: '#f4e8dc', ink: '#6e4626', line: '#e6cdb4' },  // 駝色
+                ],
+                // 成員清單＋任務裡出現過的負責人（避免移除後任務消失）
+                get memberNames() {
+                    if (this.asStaff) return this.viewName ? [this.viewName] : [];
+                    const names = this.members.map(m => m.name);
+                    (this.tasks || []).forEach(t => { if (t.assignee && !names.includes(t.assignee)) names.push(t.assignee); });
+                    return names;
+                },
+                mColor(name) {
+                    const i = this.members.findIndex(m => m.name === name);
+                    const c = i >= 0 ? (this.members[i].c ?? i) : this.memberNames.indexOf(name);
+                    return this.PALETTE[((c % this.PALETTE.length) + this.PALETTE.length) % this.PALETTE.length];
+                },
+                badgeStyle(name) { const c = this.mColor(name); return `background:${c.soft};color:${c.ink}`; },
+                avatarStyle(name) { const c = this.mColor(name); return `background:${c.soft};color:${c.ink}`; },
+                async saveMembers() {
+                    try { await this._col.doc('_members').set({ members: this.clean(this.members), updatedAt: firebase.firestore.FieldValue.serverTimestamp() }); }
+                    catch (err) { this.handleError(err); }
+                },
+                async addMember() {
+                    const name = (this.newMemberName || '').trim();
+                    this.memberMsg = '';
+                    if (!name) return;
+                    if (this.memberNames.some(n => n.toLowerCase() === name.toLowerCase())) { this.memberMsg = '已經有這個人了 / Already exists'; return; }
+                    const used = this.members.map(m => m.c);
+                    let c = 0; while (used.includes(c) && c < this.PALETTE.length) c++;
+                    if (c >= this.PALETTE.length) c = this.members.length;
+                    this.members = [...this.members, { name, c }];
+                    this.newMemberName = '';
+                    await this.saveMembers();
+                },
+                async removeMember(name) {
+                    this.memberMsg = '';
+                    const n = this.tasks.filter(t => t.assignee === name).length;
+                    if (n) { this.memberMsg = `${name} 還有 ${n} 項任務，請先改給別人或刪掉再移除。`; return; }
+                    if (!confirm(`確定移除「${name}」？`)) return;
+                    this.members = this.members.filter(m => m.name !== name);
+                    if (this.selectedMember === name) this.selectedMember = 'All';
+                    await this.saveMembers();
+                },
+                meetingModal: false,
+                goalModal: false,
+                groupModal: false,
+                gEdit: {},
+                trashModal: false,
+                _formOrig: null,
+                mForm: {},
+                gForm: {},
+                _unsubOoo: null,
+
+                // 這個登入帳號對應到哪位同事（人物清單裡的 email）
+                get myName() {
+                    const e = (this.userEmail || '').toLowerCase();
+                    const m = this.members.find(x => (x.email || '').trim().toLowerCase() === e);
+                    return m ? m.name : '';
+                },
+                L(zh, en) { return this.asStaff ? en : zh; },
+                // 預覽：管理者用某位同事的身分看畫面（只影響顯示）
+                // 可以預覽的人：人物清單裡不是管理員的
+                get previewMembers() {
+                    const adminNames = ['Eva', 'Tasha'];
+                    return this.members.filter(m => !adminNames.includes(m.name) && !this.MANAGER_EMAILS.includes((m.email || '').toLowerCase()));
+                },
+                get asStaff() { return !this.isManager || !!this.previewAs; },
+                get viewName() { return this.previewAs || this.myName; },
+                applyView() {
+                    const live = this.allTasks.filter(t => !t.deleted);
+                    this.tasks = this.asStaff ? live.filter(t => this.viewName && t.assignee === this.viewName) : live;
+                },
+                startPreview(name) {
+                    this.previewAs = name || '';
+                    this.selectedMember = 'All'; this.selectedStatus = 'All'; this.searchQuery = ''; this.page = 'tasks';
+                    this.memberPanel = false; this.expandedTasks = []; this.expandedGroups = [];
+                    this.applyView();
+                    window.scrollTo(0, 0);
+                    // 模擬他打開頁面時看到的到期提醒（不受「今天不再提醒」影響）
+                    this.dueModal = !!(this.previewAs && this.dueSections.length);
+                },
+                // 顯示用：你看中文，同事看英文（沒有英文時退回中文）
+                tx(t, f) {
+                    if (!t) return '';
+                    return !this.asStaff ? (t[f] || t[f + 'En'] || '') : (t[f + 'En'] || t[f] || '');
+                },
+                saveTrPass() {
+                    try { localStorage.setItem('task_tr_pass', this.trPass || ''); } catch (e) {}
+                    this.syncTranslations(true);
+                },
+                scheduleSync() {
+                    clearTimeout(this._trTimer);
+                    this._trTimer = setTimeout(() => this.syncTranslations(false), 1500);
+                },
+                // 比對每個欄位上次翻譯時的中英對照（sync），決定要翻成英文還是翻回中文
+                async syncTranslations(force) {
+                    if (!this.isManager) return;
+                    if (!this.trPass) { this.trError = false; this.trMsg = force ? '請先在「人物」面板填翻譯通關密碼' : ''; return; }
+                    if (this._trBusy) return;
+                    if (!force && this._trFailAt && Date.now() - this._trFailAt < 60000) return;
+                    this._trBusy = true;
+                    try {
+                        const jobs = [], pending = {};
+                        const entry = t => pending[t.id] || (pending[t.id] = { t, upd: {}, sync: { ...(t.sync || {}) }, dirty: false });
+                        for (const t of this.allTasks.filter(x => !x.deleted)) {
+                            const sync = t.sync || {};
+                            for (const f of this.TR_FIELDS) {
+                                const zh = (t[f] || '').trim(), en = (t[f + 'En'] || '').trim(), s = sync[f];
+                                if (!zh && !en) continue;
+                                let to = null;
+                                if (zh && !en) to = 'en';
+                                else if (en && !zh) to = 'zh';
+                                else if (!s) { const e = entry(t); e.sync[f] = { zh, en }; e.dirty = true; }
+                                else {
+                                    const zc = zh !== s.zh, ec = en !== s.en;
+                                    if (zc && !ec) to = 'en';
+                                    else if (ec && !zc) to = 'zh';
+                                    else if (zc && ec) { const e = entry(t); e.sync[f] = { zh, en }; e.dirty = true; }
+                                }
+                                if (to) jobs.push({ k: t.id + '|' + f, to, text: to === 'en' ? zh : en, t, f, zh, en });
+                            }
+                        }
+                        if (jobs.length) this.trMsg = `翻譯中… ${jobs.length} 個欄位`;
+                        for (let i = 0; i < jobs.length; i += 30) {
+                            const chunk = jobs.slice(i, i + 30);
+                            const r = await fetch(this.WORKER, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json', 'X-App-Pass': this.trPass },
+                                body: JSON.stringify({ mode: 'translate', items: chunk.map(j => ({ k: j.k, to: j.to, text: j.text })) })
+                            });
+                            const data = await r.json().catch(() => ({}));
+                            if (!r.ok || data.error) throw new Error(data.error || ('HTTP ' + r.status));
+                            const got = {}; (data.items || []).forEach(x => got[x.k] = (x.text || '').trim());
+                            chunk.forEach(j => {
+                                const out = got[j.k]; if (!out) return;
+                                const e = entry(j.t); e.dirty = true;
+                                if (j.to === 'en') { e.upd[j.f + 'En'] = out; e.sync[j.f] = { zh: j.zh, en: out }; }
+                                else { e.upd[j.f] = out; e.sync[j.f] = { zh: out, en: j.en }; }
+                            });
+                        }
+                        const list = Object.values(pending).filter(e => e.dirty);
+                        await Promise.all(list.map(e => this._col.doc(String(e.t.id)).set({ ...e.upd, sync: e.sync }, { merge: true })));
+                        this.trError = false; this._trFailAt = 0;
+                        this.trMsg = jobs.length ? `已同步翻譯 ${jobs.length} 個欄位` : (force ? '翻譯都是最新的' : '');
+                        if (this.trMsg) setTimeout(() => { if (!this._trBusy && !this.trError) this.trMsg = ''; }, 4000);
+                    } catch (err) {
+                        this._trFailAt = Date.now(); this.trError = true;
+                        this.trMsg = '自動翻譯失敗：' + (err.message || err) + '（一分鐘後重試，或到「人物」面板按「現在同步翻譯」）';
+                    } finally { this._trBusy = false; }
+                },
+
+                get isManager() {
+                    return this.MANAGER_EMAILS.includes((this.userEmail || '').toLowerCase());
+                },
+                get canOoo() {
+                    return (this.userEmail || '').toLowerCase() === this.OOO_EMAIL;
+                },
+
+                get oooRule() {
+                    return "    match /oneOnOne/{docId} {\n      allow read, write: if request.auth != null\n        && request.auth.token.email == '" + this.OOO_EMAIL + "';\n    }";
+                },
+
+                listenOneOnOne() {
+                    if (this._unsubOoo) { this._unsubOoo(); this._unsubOoo = null; }
+                    if (!this.canOoo) { this.oneOnOnes = []; return; }
+                    this._oooCol = this._db.collection('oneOnOne');
+                    this._unsubOoo = this._oooCol.onSnapshot(snap => {
+                        this.oooError = '';
+                        this.oneOnOnes = snap.docs.map(d => d.data());
+                    }, err => {
+                        console.error('[oneOnOne]', err);
+                        this.oooError = err && err.code === 'permission-denied' ? 'permission' : 'network';
+                    });
+                },
+
+                today() {
+                    const d = new Date();
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                },
+
+                meetingsOf(p) {
+                    return this.oneOnOnes.filter(x => x.kind === 'meeting' && x.person === p)
+                        .sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.id - a.id);
+                },
+
+                goalsOf(p) {
+                    return this.oneOnOnes.filter(x => x.kind === 'goal' && x.person === p)
+                        .sort((a, b) => (a.status === '達成') - (b.status === '達成') || a.id - b.id);
+                },
+
+                lastMeeting(p, exceptId) {
+                    return this.meetingsOf(p).find(m => m.id !== exceptId) || null;
+                },
+
+                linkedTask(a) {
+                    return a && a.taskId ? this.tasks.find(t => String(t.id) === String(a.taskId)) || null : null;
+                },
+
+                agreementDone(a) {
+                    const t = this.linkedTask(a);
+                    return t ? t.status === 'Completed' : !!a.done;
+                },
+
+                personSummary(p) {
+                    const ms = this.meetingsOf(p);
+                    const last = ms[0];
+                    const next = ms.map(m => m.nextDate).filter(Boolean).sort().pop() || '';
+                    const open = ms.reduce((n, m) => n + (m.agreements || []).filter(a => !this.agreementDone(a)).length, 0);
+                    return {
+                        last: last ? last.date : '',
+                        next,
+                        overdue: !!next && next < this.today() && !(last && last.date >= next),
+                        open,
+                        goals: this.goalsOf(p).filter(g => g.status !== '達成').length
+                    };
+                },
+
+                async saveOoo(doc) {
+                    try {
+                        await this._oooCol.doc(String(doc.id)).set({ ...this.clean(doc), updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    } catch (err) {
+                        this.oooError = err && err.code === 'permission-denied' ? 'permission' : 'network';
+                        alert('儲存失敗：' + (this.oooError === 'permission' ? '還沒開啟面談紀錄的權限（請看頁面上方的說明）' : '請檢查網路後再試'));
+                    }
+                },
+
+                deleteOoo(doc) {
+                    if (!confirm(doc.kind === 'goal' ? '確定刪除這個目標？' : '確定刪除這次面談紀錄？')) return;
+                    this._oooCol.doc(String(doc.id)).delete().catch(() => alert('刪除失敗'));
+                },
+
+                openMeeting(m) {
+                    this.mForm = m
+                        ? { ...this.clean(m), agreementsText: (m.agreements || []).map(a => a.text).join('\n') }
+                        : { id: null, kind: 'meeting', person: this.oooPerson, date: this.today(), nextDate: '', topics: '', staffInput: '', feedback: '', privateNotes: '', agreements: [], agreementsText: '' };
+                    this.meetingModal = true;
+                },
+
+                saveMeeting() {
+                    const f = this.clean(this.mForm);
+                    const old = f.agreements || [];
+                    // 依文字對回原本的約定，保留完成狀態與已轉成的任務
+                    f.agreements = (f.agreementsText || '').split('\n').map(s => s.trim()).filter(Boolean)
+                        .map(text => old.find(a => a.text === text) || { text, done: false, taskId: null });
+                    delete f.agreementsText;
+                    if (!f.id) f.id = Date.now();
+                    f.kind = 'meeting';
+                    this.oooPerson = f.person;
+                    this.saveOoo(f);
+                    this.meetingModal = false;
+                },
+
+                toggleAgreement(m, i) {
+                    const doc = this.clean(m);
+                    doc.agreements[i].done = !doc.agreements[i].done;
+                    this.saveOoo(doc);
+                },
+
+                async agreementToTask(m, i) {
+                    const a = m.agreements[i];
+                    if (!confirm('把這件事建立成任務？\n\n「' + a.text + '」\n\n任務追蹤表的同仁看得到這一行文字（面談的其他內容不會出現）。')) return;
+                    const task = {
+                        id: Date.now(), assignee: m.person, title: a.text, company: '', contact: '', phone: '',
+                        status: 'Not Started', checkpoint: '', deadline: '', currentStatus: '', proposedSolution: '',
+                        managerNotes: '來自 ' + m.date + ' 一對一面談的約定事項'
+                    };
+                    await this.saveOne(task);
+                    const doc = this.clean(m);
+                    doc.agreements[i].taskId = task.id;
+                    await this.saveOoo(doc);
+                },
+
+                openGoal(g) {
+                    this.gForm = g ? this.clean(g) : { id: null, kind: 'goal', person: this.oooPerson, title: '', period: '', progress: 0, status: '進行中', notes: '' };
+                    this.goalModal = true;
+                },
+
+                saveGoal() {
+                    const f = this.clean(this.gForm);
+                    if (!f.id) f.id = Date.now();
+                    f.kind = 'goal';
+                    this.oooPerson = f.person;
+                    this.saveOoo(f);
+                    this.goalModal = false;
+                },
+
+                // ===== Firebase：任務存在 Firestore 的 taskTracker 集合，每個任務一筆文件 =====
+                initData() {
+                    const cfg = {
+                        apiKey: "AIzaSyDau5hZr9h9Iqt_JfLWH8VtQVHw-0fb4to",
+                        authDomain: "office-checkin-855a6.firebaseapp.com",
+                        projectId: "office-checkin-855a6",
+                        storageBucket: "office-checkin-855a6.firebasestorage.app",
+                        messagingSenderId: "507140006307",
+                        appId: "1:507140006307:web:bf51eccf49377e1bb4fa16"
+                    };
+                    // 用獨立名稱的 app，登入狀態不會和打卡系統互相干擾
+                    const app = firebase.apps.find(a => a.name === 'taskTracker') || firebase.initializeApp(cfg, 'taskTracker');
+                    this._auth = app.auth();
+                    this._db = app.firestore();
+                    this._col = this._db.collection('taskTracker');
+                    this._auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(() => {});
+
+                    this._auth.onAuthStateChanged(user => {
+                        if (this._unsub) { this._unsub(); this._unsub = null; }
+                        if (this._unsubOoo) { this._unsubOoo(); this._unsubOoo = null; }
+                        if (!user) {
+                            this.tasks = [];
+                            this.oneOnOnes = [];
+                            this.page = 'tasks';
+                            this.userEmail = '';
+                            this.authState = 'out';
+                            return;
+                        }
+                        this.userEmail = user.email || '';
+                        this.authState = 'in';
+                        this.listenTasks();
+                        this.listenOneOnOne();
+                    });
+                },
+
+                listenTasks() {
+                    let first = true;
+                    const onTasks = (docs, fromCache, empty) => {
+                        this.syncError = '';
+                        if (this.isManager && first && !fromCache) {
+                            first = false;
+                            if (empty) { this.seedCloud(); return; }   // 雲端還沒資料：第一次上傳（只有管理者會做）
+                        }
+                        this.allTasks = docs.filter(d => !d.id.startsWith('_')).map(d => d.data())
+                            .sort((a, b) => Number(a.id) - Number(b.id));
+                        this.applyView();
+                        if (this.isManager) { this.syncAssigneeEmails(); this.scheduleSync(); }
+                        // 第一次拿到雲端資料後，檢查要不要跳到期提醒（每次打開頁面只檢查一次）
+                        if (!this.dueChecked && !fromCache) {
+                            this.dueChecked = true;
+                            let snoozed = '';
+                            try { snoozed = localStorage.getItem('task_due_snooze') || ''; } catch (e) {}
+                            if (snoozed !== this.today() && this.dueSections.length) this.dueModal = true;
+                        }
+                    };
+                    const onMembers = data => { const l = data && data.members; if (Array.isArray(l) && l.length) this.members = l; };
+
+                    if (this.isManager) {
+                        // 管理者：讀整個集合
+                        this._unsub = this._col.onSnapshot(snap => {
+                            const cfg = snap.docs.find(d => d.id === '_members');
+                            if (cfg) onMembers(cfg.data());
+                            onTasks(snap.docs, snap.metadata.fromCache, snap.empty);
+                        }, err => this.handleError(err));
+                    } else {
+                        // 同事：只讀人物名單＋指派給自己 email 的任務（資料庫規則也只允許這樣讀）
+                        const me = (this.userEmail || '').toLowerCase();
+                        const u1 = this._col.doc('_members').onSnapshot(d => {
+                            onMembers(d.exists ? d.data() : null);
+                            this.applyView();
+                        }, err => this.handleError(err));
+                        const u2 = this._col.where('assigneeEmail', '==', me).onSnapshot(snap => {
+                            onTasks(snap.docs, snap.metadata.fromCache, snap.empty);
+                        }, err => this.handleError(err));
+                        this._unsub = () => { u1(); u2(); };
+                    }
+                },
+
+                emailOf(name) {
+                    const m = this.members.find(x => x.name === name);
+                    return m && m.email ? m.email.trim().toLowerCase() : '';
+                },
+
+                // 管理者頁面：每筆任務的 assigneeEmail 跟著「人物」的 email 走（資料庫規則靠這個欄位判斷誰能看）
+                syncAssigneeEmails() {
+                    this.allTasks.forEach(t => {
+                        const e = this.emailOf(t.assignee);
+                        if ((t.assigneeEmail || '') !== e) this._col.doc(String(t.id)).set({ assigneeEmail: e }, { merge: true }).catch(err => this.handleError(err));
+                    });
+                },
+
+                get tasksRule() {
+                    return                         "    match /taskTracker/{taskId} {\n" +
+                        "      // 超級管理員（Eva、Tasha）：全部可以讀寫\n" +
+                        "      allow read, write: if isEmployee()\n" +
+                        "        && request.auth.token.email in ['evatzeng@taitra.org.tw', 'tasha@taitra.org.tw'];\n" +
+                        "      // 員工：可以讀人物名單（才知道自己是誰、顏色）\n" +
+                        "      allow read: if isEmployee() && taskId == '_members';\n" +
+                        "      // 員工：只能讀寫指派給自己 email 的任務（刪除是丟進垃圾桶，不能真的刪）\n" +
+                        "      allow read: if isEmployee()\n" +
+                        "        && resource.data.assigneeEmail == request.auth.token.email;\n" +
+                        "      allow create: if isEmployee()\n" +
+                        "        && request.resource.data.assigneeEmail == request.auth.token.email;\n" +
+                        "      allow update: if isEmployee()\n" +
+                        "        && resource.data.assigneeEmail == request.auth.token.email\n" +
+                        "        && request.resource.data.assigneeEmail == request.auth.token.email;\n" +
+                        "    }\n";
+                },
+
+                // 第一次使用：優先上傳這個瀏覽器裡原本的紀錄（保留已打勾狀態），沒有才用預設任務
+                async seedCloud() {
+                    if (!this.isManager) return;
+                    let initial = this.defaultTasks;
+                    try {
+                        const local = JSON.parse(localStorage.getItem('bilingual_tracker_tasks_v2') || 'null');
+                        if (Array.isArray(local) && local.length) initial = local;
+                    } catch (e) {}
+                    await this.writeAll(initial);
+                },
+
+                async writeAll(list) {
+                    try {
+                        const batch = this._db.batch();
+                        list.forEach(t => batch.set(this._col.doc(String(t.id)), { ...this.clean(t), assigneeEmail: this.emailOf(t.assignee) }));
+                        await batch.commit();
+                    } catch (err) { this.handleError(err); }
+                },
+
+                clean(t) {
+                    return JSON.parse(JSON.stringify(t)); // 去掉 Alpine 的 proxy
+                },
+
+                async saveOne(t) {
+                    try {
+                        await this._col.doc(String(t.id)).set({
+                            ...this.clean(t),
+                            assigneeEmail: this.isManager ? this.emailOf(t.assignee) : (this.userEmail || '').toLowerCase(),
+                            updatedBy: this.userEmail,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                    } catch (err) { this.handleError(err); }
+                },
+
+                // 只更新指定欄位（不會蓋掉別人同時改的其他欄位）
+                async patchTask(t, patch, extra = {}) {
+                    const p = this.clean(patch);
+                    const assignee = p.assignee || t.assignee;
+                    try {
+                        await this._col.doc(String(t.id)).set({
+                            ...p, ...extra,
+                            assigneeEmail: this.isManager ? this.emailOf(assignee) : (this.userEmail || '').toLowerCase(),
+                            updatedBy: this.userEmail,
+                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }, { merge: true });
+                    } catch (err) { this.handleError(err); }
+                },
+
+                whoAmI() {
+                    const admins = { 'evatzeng@taitra.org.tw': 'Eva', 'tasha@taitra.org.tw': 'Tasha' };
+                    return admins[(this.userEmail || '').toLowerCase()] || this.myName || (this.userEmail || '').split('@')[0];
+                },
+
+                // 進度紀錄：用 arrayUnion 加一筆，兩個人同時加也不會互蓋
+                logEntry(status, text) {
+                    const e = { at: Date.now(), by: this.whoAmI() };
+                    if (status) e.status = status;
+                    if (text) e.text = String(text).slice(0, 300);
+                    return { log: firebase.firestore.FieldValue.arrayUnion(e) };
+                },
+
+                // ===== 垃圾桶 =====
+                get trashTasks() {
+                    return this.allTasks.filter(t => t.deleted).sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0));
+                },
+                restoreTask(t) { this.patchTask(t, { deleted: false, deletedAt: null, deletedBy: null }); },
+                purgeTask(t) {
+                    if (!confirm('永久刪除「' + (this.tx(t, 'title') || '') + '」？這個動作無法復原。')) return;
+                    this._col.doc(String(t.id)).delete().catch(err => this.handleError(err));
+                },
+
+                handleError(err) {
+                    console.error('[firestore]', err);
+                    if (err && err.code === 'permission-denied') {
+                        this.syncError = this.isManager ? '沒有讀寫權限：請確認 Firestore 規則已加入 taskTracker（「人物」面板裡有規則可以複製）。' : 'No permission. Please ask Eva to check your email in the staff list.';
+                    } else {
+                        this.syncError = '雲端同步失敗，請檢查網路後重新整理。 / Sync failed — check your connection and reload.';
+                    }
+                },
+
+                async login() {
+                    this.loginError = '';
+                    this.loginBusy = true;
+                    try {
+                        await this._auth.signInWithEmailAndPassword(this.loginEmail.trim().toLowerCase(), this.loginPw);
+                        this.loginPw = '';
+                    } catch (err) {
+                        this.loginError = err.code === 'auth/network-request-failed'
+                            ? '網路錯誤，請再試一次 / Network error'
+                            : '帳號或密碼錯誤 / Wrong email or password';
+                    } finally {
+                        this.loginBusy = false;
+                    }
+                },
+
+                logout() {
+                    if (confirm('確定要登出嗎？ / Sign out?')) this._auth.signOut();
+                },
+
+                // Counts for Tab badges
+                get activeTasksCount() {
+                    return this.tasks.filter(t => t.status !== 'Completed').length;
+                },
+
+                get completedTasksCount() {
+                    return this.tasks.filter(t => t.status === 'Completed').length;
+                },
+
+                // Two staff blocks (respecting the member filter), each already sorted by deadline
+                // 每位同仁一個區塊；區塊內「同負責人 + 同標題」的任務併成一個可折疊的大項
+                get groupedTasks() {
+                    const members = this.selectedMember !== 'All' ? [this.selectedMember] : this.memberNames;
+                    return members.map(member => {
+                        const items = this.buildItems(member);
+                        const tasks = items.flatMap(i => i.type === 'single' ? [i.task] : i.tasks);
+                        return { member, items, tasks };
+                    });
+                },
+
+                // 有 groupId 就用 groupId（改名稱也不會散掉）；舊資料沒有 groupId 就照「同負責人＋同標題」
+                groupKey(t) {
+                    return t.assignee + '|' + (t.groupId ? 'g:' + t.groupId : (t.title || t.titleEn || '').trim().toLowerCase());
+                },
+
+                groupMembers(key) { return this.tasks.filter(t => this.groupKey(t) === key); },
+
+                // ===== 編輯大項：一次改整組 =====
+                openGroupEdit(grp) {
+                    const all = this.groupMembers(grp.key);
+                    if (!all.length) return;
+                    const same = f => all.every(t => (t[f] || '') === (all[0][f] || '') && (t[f + 'Date'] || '') === (all[0][f + 'Date'] || ''));
+                    this.gEdit = {
+                        key: grp.key, count: all.length,
+                        title: all[0].title || '', titleEn: all[0].titleEn || '',
+                        assignee: all[0].assignee,
+                        checkpoint: same('checkpoint') ? (all[0].checkpoint || '') : '',
+                        checkpointDate: same('checkpoint') ? (all[0].checkpointDate || '') : '',
+                        deadline: same('deadline') ? (all[0].deadline || '') : '',
+                        deadlineDate: same('deadline') ? (all[0].deadlineDate || '') : '',
+                        mixedCp: !same('checkpoint'), mixedDl: !same('deadline'),
+                        status: '',
+                        stars: grp.stars || 0
+                    };
+                    this.groupModal = true;
+                },
+
+                async saveGroupEdit() {
+                    const g = this.clean(this.gEdit);
+                    const all = this.groupMembers(g.key);
+                    if (!all.length) { this.groupModal = false; return; }
+                    const gid = all.find(t => t.groupId)?.groupId || String(Date.now());
+                    const oldTitle = all[0].title || '', oldEn = all[0].titleEn || '';
+                    const patch = { groupId: gid, stars: g.stars || 0 };
+                    if (!this.asStaff) {
+                        patch.title = (g.title || '').trim();
+                        // 中文改了、英文沒動 → 清掉英文讓它重翻，整組同一個英文
+                        patch.titleEn = (g.titleEn || '').trim() === oldEn && patch.title !== oldTitle ? '' : (g.titleEn || '').trim();
+                        patch.assignee = g.assignee || all[0].assignee;
+                    } else {
+                        patch.titleEn = (g.titleEn || '').trim();
+                    }
+                    if (!g.mixedCp || (g.checkpoint || '').trim() || g.checkpointDate) { patch.checkpoint = (g.checkpoint || '').trim(); patch.checkpointDate = g.checkpointDate || ''; }
+                    if (!g.mixedDl || (g.deadline || '').trim() || g.deadlineDate) { patch.deadline = (g.deadline || '').trim(); patch.deadlineDate = g.deadlineDate || ''; }
+                    this.groupModal = false;
+                    if (patch.assignee && patch.assignee !== all[0].assignee) {
+                        const newKey = patch.assignee + '|g:' + gid;
+                        if (this.expandedGroups.includes(g.key)) this.expandedGroups.push(newKey);
+                    } else if (this.expandedGroups.includes(g.key)) {
+                        this.expandedGroups.push((all[0].assignee) + '|g:' + gid);
+                    }
+                    await Promise.all(all.map(t => {
+                        const p = { ...patch };
+                        let extra = {};
+                        if (g.status && g.status !== t.status) { Object.assign(p, { status: g.status }, this.doneStamp(g.status, t)); extra = this.logEntry(g.status, ''); }
+                        return this.patchTask(t, p, extra);
+                    }));
+                },
+
+                // 除了「進行中 / 已完成」頁籤以外的篩選（人員、狀態、搜尋）
+                passesFilters(task) {
+                    if (this.selectedMember !== 'All' && task.assignee !== this.selectedMember) return false;
+                    if (this.selectedStatus !== 'All' && task.status !== this.selectedStatus) return false;
+                    const q = this.searchQuery.toLowerCase().trim();
+                    if (q) {
+                        return (task.title || '').toLowerCase().includes(q)
+                            || (task.titleEn || '').toLowerCase().includes(q)
+                            || (task.company || '').toLowerCase().includes(q)
+                            || (task.contact || '').toLowerCase().includes(q)
+                            || (task.assignee || '').toLowerCase().includes(q);
+                    }
+                    return true;
+                },
+
+                byDate(a, b) {
+                    return this.dueTs(a, 'deadline') - this.dueTs(b, 'deadline') ||
+                           this.dueTs(a, 'checkpoint') - this.dueTs(b, 'checkpoint');
+                },
+
+                // 日期：優先用日期選擇器（YYYY-MM-DD）；舊資料才去猜文字裡的日期
+                dueTs(t, f) {
+                    const iso = t && t[f + 'Date'];
+                    if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).getTime(); }
+                    return this.parseDueDate(t && t[f]);
+                },
+                fmtIso(iso) {
+                    const [y, m, d] = iso.split('-').map(Number);
+                    const dt = new Date(y, m - 1, d);
+                    const yr = y !== new Date().getFullYear();
+                    if (this.asStaff) return dt.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', ...(yr ? { year: 'numeric' } : {}) });
+                    return (yr ? y + '/' : '') + m + '/' + d + '（' + '日一二三四五六'[dt.getDay()] + '）';
+                },
+                dateText(t, f) {
+                    if (!t) return '';
+                    const iso = t[f + 'Date'];
+                    return [iso ? this.fmtIso(iso) : '', (t[f] || '').trim()].filter(Boolean).join(' ');
+                },
+
+                buildItems(member) {
+                    const buckets = new Map();
+                    this.tasks.filter(t => t.assignee === member).forEach(t => {
+                        const k = this.groupKey(t);
+                        if (!buckets.has(k)) buckets.set(k, []);
+                        buckets.get(k).push(t);
+                    });
+
+                    const items = [];
+                    buckets.forEach((all, key) => {
+                        const visible = all.filter(t => this.passesFilters(t)).sort((a, b) => this.byDate(a, b));
+                        if (!visible.length) return;
+
+                        if (all.length === 1) {
+                            const t = all[0];
+                            if (this.viewMode === 'Active' && t.status === 'Completed') return;
+                            if (this.viewMode === 'Completed' && t.status !== 'Completed') return;
+                            items.push({ type: 'single', key, task: t, sortRef: t, stars: t.stars || 0 });
+                            return;
+                        }
+
+                        // 大項：全部小項完成才算完成；進行中頁籤會顯示整組（含已打勾的小項）
+                        const done = all.filter(t => t.status === 'Completed').length;
+                        const allDone = done === all.length;
+                        if (this.viewMode === 'Active' && allDone) return;
+                        if (this.viewMode === 'Completed' && !allDone) return;
+
+                        const isSame = f => all.every(t => this.dateText(t, f) === this.dateText(all[0], f));
+                        const same = f => isSame(f) ? this.dateText(all[0], f) : '';
+                        const earliest = [...all].sort((a, b) => this.byDate(a, b))[0];
+                        items.push({
+                            type: 'group', key,
+                            title: this.tx(all[0], 'title'),
+                            assignee: member,
+                            tasks: visible,
+                            done, total: all.length, allDone,
+                            checkpoint: same('checkpoint') || this.dateText(earliest, 'checkpoint'),
+                            deadline: same('deadline') || this.dateText(earliest, 'deadline'),
+                            sameDates: isSame('checkpoint') && isSame('deadline'),
+                            sortRef: earliest,
+                            stars: Math.max(0, ...all.map(t => t.stars || 0)),
+                            lastDone: (() => {
+                                const d = all.filter(t => t.status === 'Completed' && this.closedAt(t)).sort((a, b) => this.closedAt(b) - this.closedAt(a))[0];
+                                if (!d) return '';
+                                const est = d.completedAt ? '' : this.L('約 ', '~');
+                                return allDone ? this.L('全部結案於 ', 'All closed ') + est + this.fmtTime(this.closedAt(d))
+                                    : this.L('最近一次打勾：', 'Last checked: ') + est + this.fmtTime(this.closedAt(d)) + '（' + (d.company || this.tx(d, 'title')) + '）';
+                            })()
+                        });
+                    });
+                    return items.sort((a, b) => (this.sortMode === 'stars' ? (b.stars - a.stars) : 0) || this.byDate(a.sortRef, b.sortRef));
+                },
+
+                // ===== 到期提醒 =====
+                todayLabel() {
+                    const d = new Date();
+                    return !this.asStaff ? `${d.getMonth() + 1}/${d.getDate()}（${'日一二三四五六'[d.getDay()]}）` : `${d.getMonth() + 1}/${d.getDate()} (${'Sun Mon Tue Wed Thu Fri Sat'.split(' ')[d.getDay()]})`;
+                },
+
+                // 依「預計完成日」：已過期、今天、3 天內；已結案的不算；同一大項合併成一行
+                get dueSections() {
+                    const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+                    const groups = new Map();
+                    this.tasks.filter(t => t.status !== 'Completed').forEach(t => {
+                        const ts = this.dueTs(t, 'deadline');
+                        if (!isFinite(ts)) return;
+                        const days = Math.round((ts - t0.getTime()) / 864e5);
+                        if (days > 3) return;
+                        const k = this.groupKey(t);
+                        const g = groups.get(k);
+                        if (!g) groups.set(k, { key: k, assignee: t.assignee, title: this.tx(t, 'title'), ts, days, count: 1, stars: t.stars || 0, ids: [t.id] });
+                        else { g.count++; g.ids.push(t.id); g.stars = Math.max(g.stars, t.stars || 0); if (ts < g.ts) { g.ts = ts; g.days = days; } }
+                    });
+                    const list = [...groups.values()].map(g => {
+                        const d = new Date(g.ts);
+                        g.dateLabel = String(d.getMonth() + 1).padStart(2, '0') + '/' + String(d.getDate()).padStart(2, '0');
+                        g.when = g.days < 0 ? this.L(`已過 ${-g.days} 天`, `${-g.days} day(s) overdue`) : g.days === 0 ? this.L('今天', 'today') : this.L(`還有 ${g.days} 天`, `in ${g.days} day(s)`);
+                        return g;
+                    }).sort((a, b) => a.days - b.days || (b.stars - a.stars));
+                    return [
+                        { cls: 'due-over', name: this.L('已過期', 'Overdue'), items: list.filter(g => g.days < 0) },
+                        { cls: 'due-today', name: this.L('今天到期', 'Due today'), items: list.filter(g => g.days === 0) },
+                        { cls: 'due-soon', name: this.L('3 天內', 'Within 3 days'), items: list.filter(g => g.days > 0) }
+                    ].filter(s => s.items.length);
+                },
+
+                snoozeDue() {
+                    try { localStorage.setItem('task_due_snooze', this.today()); } catch (e) {}
+                    this.dueModal = false;
+                },
+
+                // 點提醒裡的任務：關掉視窗、清掉篩選、展開並捲到那張卡
+                goToDue(d) {
+                    this.dueModal = false;
+                    this.page = 'tasks';
+                    this.viewMode = 'Active'; this.selectedMember = 'All'; this.selectedStatus = 'All'; this.searchQuery = '';
+                    if (d.count > 1 || this.tasks.filter(t => this.groupKey(t) === d.key).length > 1) {
+                        if (!this.expandedGroups.includes(d.key)) this.expandedGroups.push(d.key);
+                    } else if (!this.expandedTasks.includes(d.ids[0])) this.expandedTasks.push(d.ids[0]);
+                    this.$nextTick(() => setTimeout(() => {
+                        const el = [...document.querySelectorAll('[data-due-key]')].find(x => x.getAttribute('data-due-key') === d.key);
+                        if (!el) return;
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.classList.add('due-flash');
+                        setTimeout(() => el.classList.remove('due-flash'), 2000);
+                    }, 50));
+                },
+
+                // ===== 結案進度：本週、上週、本月、上個月（伊斯坦堡時間 UTC+3） =====
+                get reportPeriods() {
+                    return [
+                        { id: 'week', name: this.L('本週', 'This week') }, { id: 'lastweek', name: this.L('上週', 'Last week') },
+                        { id: 'month', name: this.L('本月', 'This month') }, { id: 'lastmonth', name: this.L('上個月', 'Last month') }
+                    ];
+                },
+                get report() {
+                    const H = 3 * 3600e3, D = 864e5;
+                    const ist = new Date(Date.now() + H);                  // 用 UTC 欄位讀伊斯坦堡的日期
+                    const y = ist.getUTCFullYear(), m = ist.getUTCMonth(), d = ist.getUTCDate();
+                    const dayStart = Date.UTC(y, m, d) - H;
+                    const monday = dayStart - ((ist.getUTCDay() + 6) % 7) * D;
+                    let from, to;
+                    if (this.reportPeriod === 'week') { from = monday; to = monday + 7 * D; }
+                    else if (this.reportPeriod === 'lastweek') { from = monday - 7 * D; to = monday; }
+                    else if (this.reportPeriod === 'month') { from = Date.UTC(y, m, 1) - H; to = Date.UTC(y, m + 1, 1) - H; }
+                    else { from = Date.UTC(y, m - 1, 1) - H; to = Date.UTC(y, m, 1) - H; }
+                    const md = ms => { const x = new Date(ms + H); return (x.getUTCMonth() + 1) + '/' + x.getUTCDate(); };
+                    // 有打勾時間用打勾時間；舊任務用最後更新時間估計（標「約」）
+                    const items = this.tasks.filter(t => t.status === 'Completed')
+                        .map(t => ({ t, at: this.closedAt(t) }))
+                        .filter(x => x.at && x.at >= from && x.at < to)
+                        .sort((a, b) => b.at - a.at)
+                        .map(x => ({ ...x.t, _at: x.at, _est: !x.t.completedAt }));
+                    const counts = {};
+                    items.forEach(t => counts[t.assignee] = (counts[t.assignee] || 0) + 1);
+                    return {
+                        items,
+                        est: items.filter(t => t._est).length,
+                        range: md(from) + ' – ' + md(to - 1),
+                        byMember: Object.keys(counts).map(name => ({ name, count: counts[name] })).sort((a, b) => b.count - a.count)
+                    };
+                },
+
+                // ===== 寄信提醒（開啟你的郵件程式，內容是英文，按寄出前可以再改） =====
+                get canRemind() { return this.isManager && !this.previewAs; },
+                get dueRemindList() {
+                    const by = {};
+                    this.dueSections.forEach(s => s.items.forEach(d => { if (this.emailOf(d.assignee)) (by[d.assignee] = by[d.assignee] || []).push(d); }));
+                    return Object.keys(by).map(name => ({ name, items: by[name] }));
+                },
+                mailtoFor(name, items) {
+                    const to = this.emailOf(name);
+                    if (!to) return null;
+                    const admins = { 'evatzeng@taitra.org.tw': 'Eva', 'tasha@taitra.org.tw': 'Tasha' };
+                    const me = admins[(this.userEmail || '').toLowerCase()] || '';
+                    const lines = items.map(d => {
+                        const tasks = this.allTasks.filter(t => d.ids.includes(t.id));
+                        const title = (tasks[0] && (tasks[0].titleEn || tasks[0].title)) || d.title;
+                        const cos = tasks.map(t => t.company).filter(Boolean);
+                        const when = d.days < 0 ? `${-d.days} day(s) overdue` : d.days === 0 ? 'due today' : `due in ${d.days} day(s)`;
+                        return `- ${title}${cos.length ? ' (' + cos.join(', ') + ')' : ''}: deadline ${d.dateLabel}, ${when}`;
+                    });
+                    const subject = items.length > 1 ? `Reminder: ${items.length} tasks due soon` : `Reminder: ${lines[0].slice(2).split(':')[0]} is due soon`;
+                    const body = `Hi ${name},\n\nA friendly reminder about the following task${items.length > 1 ? 's' : ''} on the task tracker:\n\n${lines.join('\n')}\n\nPlease update the status in the tracker, or let me know if you need any help.\nhttps://ttcistanbul.github.io/task/\n\nBest regards,\n${me}`;
+                    return 'mailto:' + encodeURIComponent(to) + '?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body);
+                },
+
+                // ===== 打勾慶祝：單一任務小彩帶；大項最後一家打勾時大彩帶＋掌聲 =====
+                celebrate(task, btn) {
+                    const name = task.assignee || '';
+                    const group = this.tasks.filter(t => this.groupKey(t) === this.groupKey(task));
+                    const left = group.filter(t => t.id !== task.id && t.status !== 'Completed').length;
+                    const isGroup = group.length > 1;
+                    const pick = a => a[Math.floor(Math.random() * a.length)];
+                    let text;
+                    if (isGroup && left === 0) text = this.L(`全部 ${group.length} 家都結案了，掌聲鼓勵！`, `All ${group.length} closed — round of applause!`);
+                    else if (isGroup) text = this.L(`好！還剩 ${left} 家`, `Nice, ${left} to go!`);
+                    else text = pick(this.asStaff
+                        ? [`Nice work, ${name}!`, 'Great job — task closed!', 'Done! One less thing.', 'Well done!']
+                        : ['做得好！又完成一件', '太棒了，結案！', '又少一件事了', `${name} 辛苦了！`]);
+                    this.cheer = { show: true, text };
+                    clearTimeout(this._cheerTimer);
+                    this._cheerTimer = setTimeout(() => this.cheer.show = false, 2400);
+                    if (btn) { btn.classList.remove('cheer-pop'); void btn.offsetWidth; btn.classList.add('cheer-pop'); }
+                    const fire = window.confetti;
+                    if (!fire || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches)) return;
+                    const colors = ['#24605f', '#c8693c', '#e0a020', '#9fd3cc', '#f3c9ad'];
+                    if (isGroup && left === 0) {
+                        const end = Date.now() + 900;
+                        (function f() {
+                            fire({ particleCount: 6, angle: 60, spread: 60, origin: { x: 0, y: 0.7 }, colors, zIndex: 70 });
+                            fire({ particleCount: 6, angle: 120, spread: 60, origin: { x: 1, y: 0.7 }, colors, zIndex: 70 });
+                            if (Date.now() < end) requestAnimationFrame(f);
+                        })();
+                        fire({ particleCount: 110, spread: 100, startVelocity: 38, origin: { x: 0.5, y: 0.45 }, colors, zIndex: 70 });
+                    } else {
+                        let o = { x: 0.5, y: 0.5 };
+                        if (btn) { const r = btn.getBoundingClientRect(); o = { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight }; }
+                        fire({ particleCount: 50, spread: 65, startVelocity: 28, ticks: 130, scalar: 0.85, origin: o, colors, zIndex: 70 });
+                    }
+                },
+
+                closedAt(t) {
+                    if (t.completedAt) return t.completedAt;
+                    const u = t.updatedAt;
+                    return u ? (u.toMillis ? u.toMillis() : (u.seconds ? u.seconds * 1000 : 0)) : 0;
+                },
+
+                // ===== 結案時間：打勾時記下時間和誰打的；取消打勾就清掉 =====
+                doneStamp(status, t) {
+                    if (status !== 'Completed') return { completedAt: null, completedBy: null };
+                    if (t && t.status === 'Completed' && t.completedAt) return {};   // 本來就結案：保留原本的時間
+                    return { completedAt: Date.now(), completedBy: this.whoAmI() || '' };
+                },
+                fmtTime(ms) {
+                    try {
+                        return new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Istanbul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })
+                            .format(new Date(ms)).replace(/^(\d+)\/(\d+),?\s*/, (m, d, mo) => (+mo) + '/' + (+d) + ' ');
+                    } catch (e) { return ''; }
+                },
+                doneLabel(t) {
+                    if (!t || t.status !== 'Completed') return '';
+                    if (t.completedAt) return this.L('結案於 ', 'Closed ') + this.fmtTime(t.completedAt) + (t.completedBy ? ' · ' + t.completedBy : '');
+                    const u = t.updatedAt && (t.updatedAt.toMillis ? t.updatedAt.toMillis() : (t.updatedAt.seconds ? t.updatedAt.seconds * 1000 : 0));
+                    return u ? this.L('約 ', 'around ') + this.fmtTime(u) + this.L(' 結案（舊資料，以最後更新時間估計）', ' (estimated from last update)') : this.L('已結案（打勾時間沒有記錄）', 'Closed (time not recorded)');
+                },
+
+                toggleSort() {
+                    this.sortMode = this.sortMode === 'stars' ? 'deadline' : 'stars';
+                    try { localStorage.setItem('task_sort_mode', this.sortMode); } catch (e) {}
+                },
+
+                // 星等：點同一顆＝清除
+                setStars(task, n) {
+                    const v = (task.stars || 0) === n ? 0 : n;
+                    this.patchTask(task, { stars: v });
+                },
+                // 大項：一次套用到這組的每個小項
+                setGroupStars(grp, n) {
+                    const v = (grp.stars || 0) === n ? 0 : n;
+                    this.tasks.filter(t => this.groupKey(t) === grp.key)
+                        .forEach(t => this.patchTask(t, { stars: v }));
+                },
+
+                toggleGroup(key) {
+                    const i = this.expandedGroups.indexOf(key);
+                    if (i > -1) this.expandedGroups.splice(i, 1); else this.expandedGroups.push(key);
+                },
+
+                // 在大項裡新增一個對象：帶入同樣的標題、負責人與日期
+                async addToGroup(grp) {
+                    const all = this.groupMembers(grp.key);
+                    const base = all[0] || grp.tasks[0] || {};
+                    // 這組還沒有 groupId：先補上，之後改名稱也不會散開
+                    let gid = all.find(t => t.groupId)?.groupId;
+                    if (!gid) {
+                        gid = String(Date.now());
+                        await Promise.all(all.map(t => this.patchTask(t, { groupId: gid })));
+                    }
+                    this.openModal(null);
+                    Object.assign(this.form, {
+                        assignee: grp.assignee,
+                        groupId: gid,
+                        title: base.title || '',
+                        titleEn: base.titleEn || '',
+                        stars: grp.stars || 0,
+                        status: base.status === 'Completed' ? 'In Progress' : (base.status || 'In Progress'),
+                        checkpoint: base.checkpoint || '', checkpointDate: base.checkpointDate || '',
+                        deadline: base.deadline || '', deadlineDate: base.deadlineDate || ''
+                    });
+                },
+
+                // Parse free-text dates: "10/28 結案" (MM/DD) or "27.10" / "02.11" (DD.MM).
+                // Unparseable text (e.g. "Will be finalized soon") sorts last.
+                parseDueDate(text) {
+                    if (!text) return Infinity;
+                    let month, day;
+                    let m = text.match(/(\d{1,2})\/(\d{1,2})/);
+                    if (m) { month = +m[1]; day = +m[2]; }
+                    else if ((m = text.match(/(\d{1,2})\.(\d{1,2})/))) { day = +m[1]; month = +m[2]; }
+                    else return Infinity;
+                    if (month < 1 || month > 12 || day < 1 || day > 31) return Infinity;
+                    // 沒寫年份：取離今天最近的那一年（11 月看 01/05 → 明年；1 月看 12/30 → 去年＝已過期）
+                    const now = Date.now(), y = new Date().getFullYear();
+                    return [y - 1, y, y + 1].map(yy => new Date(yy, month - 1, day).getTime())
+                        .sort((a, b) => Math.abs(a - now) - Math.abs(b - now))[0];
+                },
+
+                get stats() {
+                    const total = this.tasks.length;
+                    const completed = this.tasks.filter(t => t.status === 'Completed').length;
+                    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    return { total, completed, percent };
+                },
+
+                memberStats(member) {
+                    const memberTasks = this.tasks.filter(t => t.assignee === member);
+                    const total = memberTasks.length;
+                    const completed = memberTasks.filter(t => t.status === 'Completed').length;
+                    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    return { total, completed, percent };
+                },
+
+                getStatusLabel(status) {
+                    switch (status) {
+                        case 'Not Started': return '尚未開始 / Not Started';
+                        case 'In Progress': return '進行中 / In Progress';
+                        case 'Pending': return '等待中、卡關中 / Awaiting';
+                        case 'Completed': return '已結案 / Closed';
+                        default: return status;
+                    }
+                },
+
+                getStatusBadgeClass(status) {
+                    switch (status) {
+                        case 'Not Started': return 'bg-slate-100 text-slate-700 border border-slate-300';
+                        case 'In Progress': return 'bg-sky-100 text-sky-800 border border-sky-200';
+                        case 'Pending': return 'bg-amber-100 text-amber-800 border border-amber-200';
+                        case 'Completed': return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+                        default: return 'bg-slate-100 text-slate-800';
+                    }
+                },
+
+                toggleStatus(task, ev) {
+                    const next = task.status === 'Completed' ? 'In Progress' : 'Completed';
+                    if (next === 'Completed') this.celebrate(task, ev && ev.currentTarget);
+                    this.patchTask(task, { status: next, ...this.doneStamp(next, task) }, this.logEntry(next, ''));
+                },
+
+                toggleExpand(id) {
+                    const index = this.expandedTasks.indexOf(id);
+                    if (index > -1) {
+                        this.expandedTasks.splice(index, 1);
+                    } else {
+                        this.expandedTasks.push(id);
+                    }
+                },
+
+                openModal(task = null) {
+                    this._formOrig = task ? this.clean(task) : null;
+                    if (task) {
+                        this.form = JSON.parse(JSON.stringify(task));
+                    } else {
+                        this.form = {
+                            id: null,
+                            assignee: this.asStaff ? this.viewName : (this.selectedMember !== 'All' ? this.selectedMember : (this.memberNames[0] || '')),
+                            title: '', titleEn: '', currentStatusEn: '', proposedSolutionEn: '', managerNotesEn: '',
+                            company: '',
+                            contact: '',
+                            phone: '',
+                            status: 'In Progress',
+                            stars: 0,
+                            checkpoint: '', checkpointDate: '',
+                            deadline: '', deadlineDate: '',
+                            currentStatus: '',
+                            proposedSolution: '',
+                            managerNotes: ''
+                        };
+                    }
+                    this.isModalOpen = true;
+                },
+
+                saveTask() {
+                    const orig = this._formOrig;
+                    if (!this.form.id) this.form.id = Date.now();
+                    const wasDone = orig && orig.status === 'Completed';
+                    if (this.form.status === 'Completed' && !wasDone) this.celebrate(this.form, null);
+                    Object.assign(this.form, this.doneStamp(this.form.status, orig || this.form));
+                    if (!this.isManager) this.form.assignee = this.myName || this.form.assignee;
+                    const f = this.clean(this.form);
+                    this.isModalOpen = false;
+                    if (!orig) {   // 新任務：整筆寫入，附第一筆進度紀錄
+                        const first = { at: Date.now(), by: this.whoAmI(), status: f.status };
+                        const txt = (f.currentStatus || f.currentStatusEn || '').slice(0, 300);
+                        if (txt) first.text = txt;
+                        f.log = [first];
+                        return this.saveOne(f);
+                    }
+                    const skip = ['updatedAt', 'updatedBy', 'log', 'sync', 'assigneeEmail'];
+                    const patch = {};
+                    Object.keys(f).forEach(k => { if (!skip.includes(k) && JSON.stringify(f[k] ?? null) !== JSON.stringify(orig[k] ?? null)) patch[k] = f[k]; });
+                    if (!Object.keys(patch).length) return;
+                    const statusChanged = 'status' in patch;
+                    const progress = ('currentStatus' in patch ? f.currentStatus : '') || ('currentStatusEn' in patch ? f.currentStatusEn : '');
+                    const extra = statusChanged || progress ? this.logEntry(statusChanged ? f.status : '', progress) : {};
+                    return this.patchTask(orig, patch, extra);
+                },
+
+                deleteTask(id) {
+                    const t = this.allTasks.find(x => x.id === id);
+                    if (!t || !confirm(this.L('確定要刪除這項任務嗎？（管理者可以從垃圾桶還原）', 'Delete this task? (Your manager can restore it)'))) return;
+                    this.patchTask(t, { deleted: true, deletedAt: Date.now(), deletedBy: this.whoAmI() });
+                },
+
+                exportCSV() {
+                    const headers = ["ID", "Assignee", "Stars", "Title", "Company", "Contact", "Phone", "Status", "Checkpoint Date", "Checkpoint", "Deadline Date", "Deadline", "Current Status", "Action Plan", "Notes"];
+                    const rows = this.tasks.map(t => [
+                        t.id,
+                        `"${t.assignee}"`,
+                        t.stars || 0,
+                        `"${(t.title || '').replace(/"/g, '""')}"`,
+                        `"${(t.company || '').replace(/"/g, '""')}"`,
+                        `"${(t.contact || '').replace(/"/g, '""')}"`,
+                        `"${(t.phone || '').replace(/"/g, '""')}"`,
+                        `"${t.status}"`,
+                        t.checkpointDate || '',
+                        `"${(t.checkpoint || '').replace(/"/g, '""')}"`,
+                        t.deadlineDate || '',
+                        `"${(t.deadline || '').replace(/"/g, '""')}"`,
+                        `"${(t.currentStatus || '').replace(/"/g, '""')}"`,
+                        `"${(t.proposedSolution || '').replace(/"/g, '""')}"`,
+                        `"${(t.managerNotes || '').replace(/"/g, '""')}"`
+                    ]);
+
+                    const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+                    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                    const link = document.createElement("a");
+                    const url = URL.createObjectURL(blob);
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", `Task_Handover_Export_${new Date().toISOString().slice(0,10)}.csv`);
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                }
+            };
+        }
+    </script>
+</body>
+</html>
